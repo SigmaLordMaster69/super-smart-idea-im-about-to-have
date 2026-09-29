@@ -35,7 +35,7 @@ local function key(cx: number, cz: number): number
 	return cx * 131072 + cz
 end
 
-function ChunkManager.new(world, config, terrain)
+function ChunkManager.new(world, config, terrain, assets)
 	local self = setmetatable({}, ChunkManager)
 	self.world = world
 	self.config = config
@@ -47,7 +47,7 @@ function ChunkManager.new(world, config, terrain)
 	container.Parent = Workspace
 	self.container = container
 
-	self.props = Props.new()
+	self.props = Props.new(assets)
 	self.terrainBuilder = TerrainBuilder.new(world, config, terrain)
 	self.roadBuilder = RoadBuilder.new(world, config, self.props)
 	self.decorator = Decorator.new(world, config, self.props)
@@ -60,6 +60,7 @@ function ChunkManager.new(world, config, terrain)
 	self.wantedTime = 0
 	self.deadline = 0
 	self.pendingRebase = nil
+	self.lastWork = 0
 	self.onRebase = nil -- function(delta: Vector3)
 	self.stats = { built = 0, unloaded = 0, decorated = 0, rebases = 0 }
 	self:_newWorker()
@@ -118,7 +119,8 @@ end
 
 -- Run generation for up to `budget` seconds this frame.
 function ChunkManager:update(budget: number)
-	self.deadline = os.clock() + budget
+	local start = os.clock()
+	self.deadline = start + budget
 	if coroutine.status(self.worker) == "dead" then
 		self:_newWorker()
 	end
@@ -127,6 +129,18 @@ function ChunkManager:update(budget: number)
 		warn("[InfiniteRoad] generation worker crashed: " .. tostring(err))
 		self:_newWorker()
 	end
+	self.lastWork = os.clock() - start
+end
+
+-- Wanted chunks that are not built yet.
+function ChunkManager:pendingCount(): number
+	local n = 0
+	for _, w in self.wanted do
+		if not self.chunks[w.key] then
+			n += 1
+		end
+	end
+	return n
 end
 
 function ChunkManager:_refreshWanted()

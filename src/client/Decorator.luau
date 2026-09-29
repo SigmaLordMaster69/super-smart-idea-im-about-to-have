@@ -173,7 +173,11 @@ function Decorator:build(chunk, level: number, origin: Vector3, parent, yieldFn)
 				local style = (typeName == "Canyon" and "canyon") or ((typeName == "Coast" or nearWater) and "coast") or (snowy and "snow") or "default"
 				local rsize = 1.5 + r3 * r3 * 7
 				local rock = props:rock(style, rsize, rng)
-				rock.CFrame = CFrame.new(base + Vector3.new(0, rsize * 0.15, 0)) * yaw * CFrame.Angles(r2 * 0.6, 0, r3 * 0.5)
+				if rock:IsA("Model") then
+					props.place(rock, CFrame.new(base) * yaw)
+				else
+					props.place(rock, CFrame.new(base + Vector3.new(0, rsize * 0.15, 0)) * yaw * CFrame.Angles(r2 * 0.6, 0, r3 * 0.5))
+				end
 				rock.Parent = parent
 				continue
 			end

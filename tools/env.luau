@@ -234,6 +234,21 @@ roblox.implementMethod("Model", "PivotTo", function(model, cf)
 	end
 	model.WorldPivot = cf
 end)
+roblox.implementMethod("Model", "GetScale", function(model)
+	return model:GetAttribute("TestScale") or 1
+end)
+roblox.implementMethod("Model", "ScaleTo", function(model, scale)
+	local f = scale / (model:GetAttribute("TestScale") or 1)
+	local pivot = currentPivot(model)
+	for _, d in model:GetDescendants() do
+		if d:IsA("BasePart") then
+			local rel = pivot:ToObjectSpace(d.CFrame)
+			d.CFrame = pivot * (rel - rel.Position + rel.Position * f)
+			d.Size = d.Size * f
+		end
+	end
+	model:SetAttribute("TestScale", scale)
+end)
 roblox.implementMethod("Workspace", "BulkMoveTo", function(_, parts, cframes)
 	assert(#parts == #cframes, "BulkMoveTo list sizes differ")
 	for i, p in parts do
@@ -319,7 +334,11 @@ baseEnv = {
 	task = task,
 	workspace = workspaceMock,
 	game = gameMock,
-	RaycastParams = roblox.RaycastParams,
+	RaycastParams = roblox.RaycastParams or {
+		new = function()
+			return { FilterDescendantsInstances = {}, IgnoreWater = false }
+		end,
+	},
 	require = envRequire,
 }
 

@@ -5,7 +5,8 @@
 	throttle (-1..1), steer (-1..1) and handbrake.
 
 	Keyboard: W/S or arrows drive, A/D or arrows steer, Space handbrake,
-	          F autodrive, C camera, R reset car, T time of day, H hide HUD.
+	          F autodrive, C camera, R reset car, T time of day, H hide HUD,
+	          F3 stats overlay.
 	Gamepad:  RT/LT throttle/brake, left stick steer, A handbrake,
 	          X autodrive, Y camera, B reset.
 	Touch:    on-screen buttons.
@@ -40,6 +41,8 @@ function Input.new()
 			self:_fire("time")
 		elseif kc == K.H or kc == K.DPadDown then
 			self:_fire("hud")
+		elseif kc == K.F3 then
+			self:_fire("stats")
 		end
 	end)
 

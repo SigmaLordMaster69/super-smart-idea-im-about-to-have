@@ -10,7 +10,13 @@
 	is just `clone:PivotTo(CFrame.new(groundPoint) * yaw)`.
 
 	Each tree kind also has a one-part "far" version used by distant chunks.
+
+	If an AssetLibrary is given, premade models dropped into
+	ReplicatedStorage.InfiniteRoadAssets replace the procedural ones kind by
+	kind (see AssetLibrary.luau).
 ]]
+
+local AssetLibrary = require(script.Parent.AssetLibrary)
 
 local Props = {}
 Props.__index = Props
@@ -224,16 +230,39 @@ end
 ---------------------------------------------------------------------------
 -- Template cache
 ---------------------------------------------------------------------------
-function Props.new()
+function Props.new(assets)
 	local self = setmetatable({}, Props)
 	self.templates = {}
+	self.assets = assets
 	return self
+end
+
+-- A premade model for `kind` if the asset packs provide one.
+function Props:_asset(kind: string, sizeClass: number, variant: number): Model?
+	local assets = self.assets
+	if assets and assets:has(kind) then
+		return assets:pick(kind, sizeClass, variant)
+	end
+	return nil
 end
 
 -- Returns a fresh clone of a tree/plant template.
 -- kind: pine, snowpine, oak, birch, cypress, cactus, bush, drybush, flowers
 -- size: 1..3, variant: any integer, far: one-part version
 function Props:tree(kind: string, size: number, variant: number, far: boolean, autumn: boolean?)
+	local assets = self.assets
+	if assets then
+		local key = kind
+		if autumn and assets:has(kind .. "_autumn") then
+			key = kind .. "_autumn"
+		elseif kind == "snowpine" and not assets:has("snowpine") then
+			key = "pine"
+		end
+		-- heavy asset trees fall back to the one-part stand-in far away
+		if assets:has(key) and (not far or assets:partCount(key) <= 4) then
+			return assets:pick(key, size, variant)
+		end
+	end
 	local v = variant % 3
 	local key = string.format("%s/%d/%d/%s/%s", kind, size, v, far and "f" or "n", autumn and "a" or "g")
 	local t = self.templates[key]
@@ -252,7 +281,12 @@ local ROCK_STYLE = {
 	snow = { Enum.Material.Rock, rgb(150, 150, 152) },
 }
 
+-- Returns a Part (procedural) or a Model (asset); place it with Props.place.
 function Props:rock(style: string, size: number, rng)
+	local asset = self:_asset("rock", size < 3 and 1 or (size < 6 and 2 or 3), rng:NextInteger(0, 999))
+	if asset then
+		return asset
+	end
 	local s = ROCK_STYLE[style] or ROCK_STYLE.default
 	return newPart("Part", {
 		Name = "Rock",
@@ -261,6 +295,15 @@ function Props:rock(style: string, size: number, rng)
 		Color = s[2]:Lerp(Color3.new(), rng:NextNumber(0, 0.15)),
 		CanCollide = size > 3,
 	})
+end
+
+-- Move a Part or Model to `cf`.
+function Props.place(obj: Instance, cf: CFrame)
+	if obj:IsA("Model") then
+		obj:PivotTo(cf)
+	else
+		(obj :: BasePart).CFrame = cf
+	end
 end
 
 ---------------------------------------------------------------------------
@@ -305,8 +348,13 @@ local function post(model, height: number, x: number?)
 	})
 end
 
--- Yellow diamond warning sign with a text symbol.
-function Props:warningSign(text: string): Model
+-- Yellow diamond warning sign with a text symbol. `kind` names the asset
+-- slot that can replace it (CurveLeft, CurveRight, FallingRocks, Deer).
+function Props:warningSign(text: string, kind: string?): Model
+	local asset = kind and self:_asset(kind, 1, 0)
+	if asset then
+		return asset
+	end
 	local m = Instance.new("Model")
 	post(m, 7.5)
 	local center = Vector3.new(0, 7.5, 0)
@@ -337,6 +385,10 @@ end
 
 -- Rectangular yellow/black chevron board for sharp curves.
 function Props:chevron(pointRight: boolean): Model
+	local asset = self:_asset(pointRight and "ChevronRight" or "ChevronLeft", 1, 0)
+	if asset then
+		return asset
+	end
 	local key = pointRight and "chevronR" or "chevronL"
 	local t = self.templates[key]
 	if not t then
@@ -385,24 +437,37 @@ function Props:panel(text: string, width: number, height: number, bg: Color3, fg
 	return finish(m, "Sign")
 end
 
+-- Asset sign with its text swapped in (if it has a TextLabel).
+function Props:_textSign(kind: string, text: string): Model?
+	local asset = self:_asset(kind, 1, 0)
+	if asset then
+		AssetLibrary.setText(asset, text)
+	end
+	return asset
+end
+
 function Props:speedLimit(limit: number): Model
-	return self:panel("SPEED\nLIMIT\n" .. limit, 3.2, 4, SIGN_WHITE, INK, 4)
+	return self:_textSign("SpeedLimit", tostring(limit)) or self:panel("SPEED\nLIMIT\n" .. limit, 3.2, 4, SIGN_WHITE, INK, 4)
 end
 
 function Props:guideSign(text: string): Model
-	return self:panel(text, 13, 5, SIGN_GREEN, SIGN_WHITE, 6)
+	return self:_textSign("Guide", text) or self:panel(text, 13, 5, SIGN_GREEN, SIGN_WHITE, 6)
 end
 
 function Props:tunnelSign(lengthText: string): Model
-	return self:panel("TUNNEL\n" .. lengthText, 4.4, 3.4, SIGN_BLUE, SIGN_WHITE, 4.5)
+	return self:_textSign("Tunnel", lengthText) or self:panel("TUNNEL\n" .. lengthText, 4.4, 3.4, SIGN_BLUE, SIGN_WHITE, 4.5)
 end
 
 function Props:distanceMarker(text: string): Model
-	return self:panel(text, 1.6, 1.3, SIGN_GREEN, SIGN_WHITE, 2.4)
+	return self:_textSign("Marker", text) or self:panel(text, 1.6, 1.3, SIGN_GREEN, SIGN_WHITE, 2.4)
 end
 
 -- White roadside post with an amber reflector.
 function Props:delineator(): Model
+	local asset = self:_asset("Delineator", 1, 0)
+	if asset then
+		return asset
+	end
 	local t = self.templates.delineator
 	if not t then
 		t = Instance.new("Model")
@@ -439,6 +504,10 @@ end
 
 -- Red/white barrier across the road where it begins.
 function Props:roadEnd(width: number): Model
+	local asset = self:_asset("RoadEnd", 1, 0)
+	if asset then
+		return asset
+	end
 	local m = Instance.new("Model")
 	local stripes = math.floor(width / 3)
 	for i = 0, stripes - 1 do

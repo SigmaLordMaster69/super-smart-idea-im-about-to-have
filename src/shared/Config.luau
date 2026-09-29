@@ -166,8 +166,20 @@ Config.Car = {
 		Color3.fromRGB(150, 196, 214),
 	},
 
+	BodyLength = 15, -- premade car bodies are scaled to this length
+
 	AutoDriveSpeed = 95, -- cruise speed on straights
 	AutoDriveLateralAccel = 70, -- studs/s^2 it is willing to pull in corners
+}
+
+---------------------------------------------------------------------------
+-- Sounds: paste audio asset ids ("rbxassetid://123...") from the Toolbox.
+-- Empty strings mean silence.
+---------------------------------------------------------------------------
+Config.Sounds = {
+	Engine = "", -- looping engine hum, pitched up with speed
+	Wind = "", -- looping wind, louder with speed
+	Ambience = "", -- looping background (birds, waves...)
 }
 
 ---------------------------------------------------------------------------

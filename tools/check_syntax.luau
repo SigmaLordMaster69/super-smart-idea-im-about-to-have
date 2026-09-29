@@ -44,6 +44,11 @@ if fs.isFile("InfiniteScenicRoad.rbxl") then
 	local server = game:GetService("ServerScriptService"):FindFirstChild("InfiniteRoadServer")
 	need(server and server.ClassName == "Script", "server Script missing")
 	need(ws:FindFirstChild("SpawnPlate"), "spawn plate missing")
+	local assetRoot = game:GetService("ReplicatedStorage"):FindFirstChild("InfiniteRoadAssets")
+	local trees = assetRoot and assetRoot:FindFirstChild("Trees")
+	need(trees and trees:FindFirstChild("Pine"), "asset folders missing")
+	local carSlot = assetRoot and assetRoot:FindFirstChild("Car")
+	need(carSlot and carSlot:FindFirstChild("Body"), "car asset slot missing")
 	print("place file checked")
 end
 

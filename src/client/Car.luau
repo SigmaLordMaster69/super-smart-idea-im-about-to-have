@@ -11,6 +11,11 @@
 
 	Wheels are visual only: massless, non-colliding, moved every frame to
 	where the suspension says they are.
+
+	A premade car model in ReplicatedStorage.InfiniteRoadAssets.Car.Body
+	replaces the part-built body. Its wheels (parts named *wheel*, *tire*,
+	*tyre* or *rim*) are found automatically and attached to the suspension,
+	so they spin, steer and bounce.
 ]]
 
 local Workspace = game:GetService("Workspace")
@@ -56,7 +61,7 @@ local function visual(model, chassis, className, props)
 	return p
 end
 
-function Car.new(config, color: Color3)
+function Car.new(config, color: Color3, assets)
 	local self = setmetatable({}, Car)
 	self.config = config.Car
 	local cc = config.Car
@@ -128,7 +133,6 @@ function Car.new(config, color: Color3)
 
 	-- corners: front-left, front-right, rear-left, rear-right (front is -Z)
 	self.wheels = {}
-	local mass = chassis:GetMass()
 	for i, def in { { -1, -1 }, { 1, -1 }, { -1, 1 }, { 1, 1 } } do
 		local x, z = def[1] * HALF_TRACK, def[2] * HALF_BASE
 		local att = Instance.new("Attachment")
@@ -179,8 +183,12 @@ function Car.new(config, color: Color3)
 		self.wheels[i] = {
 			x = x,
 			z = z,
+			radius = cc.WheelRadius,
 			front = def[2] < 0,
 			force = force,
+			attachment = att,
+			part = wheel,
+			hub = hub,
 			weld = weld,
 			length = cc.SuspensionLength,
 			spin = 0,
@@ -199,14 +207,209 @@ function Car.new(config, color: Color3)
 	self.aero = aero
 
 	self.steer = 0
-	self.mass = mass
 	self.rayParams = RaycastParams.new()
 	self.rayParams.FilterType = Enum.RaycastFilterType.Exclude
 	self.rayParams.FilterDescendantsInstances = { model }
 	self.rayParams.IgnoreWater = true
 	self.grounded = 0
 	self.speed = 0
+
+	if assets and assets.carSource then
+		local ok, err = pcall(function()
+			self:_applyBody(assets.carSource, assets.carFolder)
+		end)
+		if not ok then
+			warn("[InfiniteRoad] could not use the car model from InfiniteRoadAssets.Car.Body: " .. tostring(err))
+		end
+	end
+	self:_sounds(config.Sounds)
 	return self
+end
+
+local function isWheelName(name: string): boolean
+	local n = string.lower(name)
+	if string.find(n, "steer") or string.find(n, "spare") then
+		return false
+	end
+	return string.find(n, "wheel") ~= nil or string.find(n, "tire") ~= nil or string.find(n, "tyre") ~= nil or string.find(n, "rim") ~= nil
+end
+
+-- is this part a wheel, or inside something named like one?
+local function inWheel(part: Instance, root: Instance): boolean
+	local node = part
+	while node and node ~= root do
+		if isWheelName(node.Name) then
+			return true
+		end
+		node = node.Parent
+	end
+	return false
+end
+
+local function listBounds(parts)
+	local lo = Vector3.new(math.huge, math.huge, math.huge)
+	local hi = -lo
+	for _, p in parts do
+		local cf, s = p.CFrame, p.Size * 0.5
+		for _, c in { -1, 1 } do
+			for _, d in { -1, 1 } do
+				for _, e in { -1, 1 } do
+					local w = cf:PointToWorldSpace(Vector3.new(s.X * c, s.Y * d, s.Z * e))
+					lo = Vector3.new(min(lo.X, w.X), min(lo.Y, w.Y), min(lo.Z, w.Z))
+					hi = Vector3.new(max(hi.X, w.X), max(hi.Y, w.Y), max(hi.Z, w.Z))
+				end
+			end
+		end
+	end
+	return lo, hi
+end
+
+-- Swap the part-built body for a premade model.
+function Car:_applyBody(source: Instance, folder: Instance?)
+	local AssetLibrary = require(script.Parent.AssetLibrary)
+	local cc = self.config
+	local chassis = self.chassis
+
+	local body
+	if source:IsA("Model") then
+		body = source:Clone()
+	else
+		body = Instance.new("Model")
+		source:Clone().Parent = body
+	end
+	AssetLibrary.sanitize(body)
+	for _, p in body:GetDescendants() do
+		if p:IsA("BasePart") then
+			p.Anchored = true
+			p.CanCollide = false
+			p.CanQuery = false
+			p.CanTouch = false
+			p.Massless = true
+		end
+	end
+	if body.PrimaryPart then
+		body.PrimaryPart = nil
+	end
+
+	-- face -Z, bottom centre at the origin, scaled to the car's length
+	local size = AssetLibrary.recenter(body)
+	local yaw = AssetLibrary.attribute(source, folder, "YawOffset")
+	if yaw and yaw ~= 0 then
+		body:PivotTo(CFrame.Angles(0, math.rad(yaw), 0))
+		size = AssetLibrary.recenter(body)
+	end
+	local factor = AssetLibrary.attribute(source, folder, "Scale") or 1
+	if AssetLibrary.attribute(source, folder, "KeepSize") ~= true then
+		factor *= cc.BodyLength / max(size.Z, 0.1)
+	end
+	if factor ~= 1 then
+		body:ScaleTo(body:GetScale() * factor)
+		size *= factor
+	end
+
+	-- the model's wheels, sorted into corners (same order as self.wheels)
+	local corners = { {}, {}, {}, {} }
+	for _, p in body:GetDescendants() do
+		if p:IsA("BasePart") and p.Transparency < 0.99 and inWheel(p, body) then
+			local c = p.CFrame.Position
+			if c.Y < size.Y * 0.55 and abs(c.X) > size.X * 0.12 then
+				local idx = (c.X < 0 and 1 or 2) + (c.Z < 0 and 0 or 2)
+				table.insert(corners[idx], p)
+			end
+		end
+	end
+	local haveWheels = #corners[1] > 0 and #corners[2] > 0 and #corners[3] > 0 and #corners[4] > 0
+
+	local omega = 2 * math.pi * cc.SuspensionFrequency
+	local restHubY = ATTACH_Y - (cc.SuspensionLength - Workspace.Gravity / (omega * omega))
+	local centers = {}
+	local offsetY
+	if haveWheels then
+		local sumY = 0
+		for i = 1, 4 do
+			local lo, hi = listBounds(corners[i])
+			centers[i] = { center = (lo + hi) * 0.5, radius = max(hi.Y - lo.Y, hi.Z - lo.Z) * 0.5 }
+			sumY += centers[i].center.Y
+		end
+		offsetY = restHubY - sumY / 4
+	else
+		offsetY = restHubY - cc.WheelRadius -- body bottom on the ground
+	end
+	body:PivotTo(chassis.CFrame * CFrame.new(0, offsetY, 0))
+
+	-- hide the part-built body (lights keep working from hidden parts)
+	for _, d in self.model:GetDescendants() do
+		if d:IsA("BasePart") then
+			local isOurWheel = false
+			for _, w in self.wheels do
+				if d == w.part or d == w.hub then
+					isOurWheel = true
+				end
+			end
+			if not isOurWheel or haveWheels then
+				d.Transparency = 1
+			end
+		end
+	end
+
+	local wheelParts = {}
+	if haveWheels then
+		for i, w in self.wheels do
+			local c = centers[i]
+			local hubY = c.center.Y + offsetY
+			w.x, w.z = c.center.X, c.center.Z
+			w.radius = clamp(c.radius, 0.6, 5)
+			w.attachment.Position = Vector3.new(w.x, FORCE_Y, w.z)
+			w.part.CFrame = chassis.CFrame * CFrame.new(w.x, hubY, w.z)
+			w.hub.CFrame = w.part.CFrame
+			for _, p in corners[i] do
+				wheelParts[p] = true
+				local weld = Instance.new("WeldConstraint")
+				weld.Part0 = w.part
+				weld.Part1 = p
+				weld.Parent = p
+			end
+			w.weld.C0 = CFrame.new(w.x, hubY, w.z)
+		end
+	end
+	for _, p in body:GetDescendants() do
+		if p:IsA("BasePart") and not wheelParts[p] then
+			weldTo(p, chassis)
+		end
+	end
+	for _, p in body:GetDescendants() do
+		if p:IsA("BasePart") then
+			p.Anchored = false
+		end
+	end
+	body.Name = "Body"
+	body.Parent = self.model
+
+	-- the collision box follows the body's footprint
+	chassis.Size = Vector3.new(clamp(size.X * 0.9, 5, 10), CHASSIS_SIZE.Y, clamp(size.Z * 0.95, 10, 22))
+	self.customBody = true
+end
+
+-- Optional looping engine and wind sounds (asset ids in Config.Sounds).
+function Car:_sounds(sounds)
+	if not sounds then
+		return
+	end
+	local function make(id, volume)
+		if not id or id == "" then
+			return nil
+		end
+		local snd = Instance.new("Sound")
+		snd.SoundId = id
+		snd.Looped = true
+		snd.Volume = volume
+		snd.RollOffMaxDistance = 200
+		snd.Parent = self.chassis
+		snd:Play()
+		return snd
+	end
+	self.engineSound = make(sounds.Engine, 0.35)
+	self.windSound = make(sounds.Wind, 0)
 end
 
 function Car:setIgnore(list)
@@ -267,16 +470,16 @@ function Car:step(dt: number, throttle: number, steerInput: number, handbrake: b
 	local rate = cc.SteerSpeed * cc.MaxSteerLow * dt
 	self.steer += clamp(target - self.steer, -rate, rate)
 
-	local L0, R = cc.SuspensionLength, cc.WheelRadius
+	local L0 = cc.SuspensionLength
 	local omega = 2 * math.pi * cc.SuspensionFrequency
 	local K = mw * omega * omega
 	local C = 2 * cc.SuspensionDamping * mw * omega
-	local rayLen = L0 + R
 
 	local grounded = 0
 	for _, w in self.wheels do
+		local R = w.radius
 		local origin = cf:PointToWorldSpace(Vector3.new(w.x, ATTACH_Y, w.z))
-		local hit = Workspace:Raycast(origin, -up * rayLen, self.rayParams)
+		local hit = Workspace:Raycast(origin, -up * (L0 + R), self.rayParams)
 		if not hit then
 			w.force.Force = Vector3.zero
 			w.length = L0
@@ -367,6 +570,13 @@ function Car:render()
 	for _, w in self.wheels do
 		local steer = w.front and self.steer or 0
 		w.weld.C0 = CFrame.new(w.x, ATTACH_Y - w.length, w.z) * CFrame.Angles(0, -steer, 0) * CFrame.Angles(-w.spin, 0, 0)
+	end
+	local speed = math.abs(self.speed)
+	if self.engineSound then
+		self.engineSound.PlaybackSpeed = 0.7 + math.min(speed / self.config.TopSpeed, 1.2) * 1.3
+	end
+	if self.windSound then
+		self.windSound.Volume = math.min(speed / self.config.TopSpeed, 1) * 0.5
 	end
 	local clock = Lighting.ClockTime
 	local night = clock < 6.6 or clock > 17.9

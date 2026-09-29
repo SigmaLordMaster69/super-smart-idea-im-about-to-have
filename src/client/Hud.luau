@@ -119,7 +119,7 @@ function Hud.new(seed: number)
 		TextYAlignment = Enum.TextYAlignment.Bottom,
 		TextTransparency = 0.25,
 		Visible = not touch,
-		Text = "W/S drive   A/D steer   Space handbrake   F autodrive   C camera   R reset   T time of day   H hide HUD   Right-drag look",
+		Text = "W/S drive   A/D steer   Space handbrake   F autodrive   C camera   R reset   T time of day   H hide HUD   F3 stats   Right-drag look",
 	})
 	self.toast = label(root, {
 		Name = "Toast",
@@ -130,6 +130,19 @@ function Hud.new(seed: number)
 		Text = "",
 		TextTransparency = 1,
 		TextStrokeTransparency = 1,
+	})
+	self.stats = label(gui, {
+		Name = "Stats",
+		Position = UDim2.fromOffset(28, 52),
+		Size = UDim2.fromOffset(620, 80),
+		TextSize = 14,
+		Font = Enum.Font.Code,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		TextColor3 = rgb(210, 255, 210),
+		TextStrokeTransparency = 0.4,
+		Visible = false,
+		Text = "",
 	})
 	root.Visible = false
 
@@ -210,6 +223,14 @@ function Hud:update(speed: number, distanceStuds: number)
 	-- 1 stud ~ 0.28 m, so studs/s ~ km/h
 	self.speed.Text = tostring(math.floor(math.abs(speed) * 1.008 + 0.5))
 	self.distance.Text = string.format("%.1f km", distanceStuds * 0.00028)
+end
+
+-- Debug overlay text; nil hides it.
+function Hud:setStats(text: string?)
+	self.stats.Visible = text ~= nil
+	if text and text ~= "" then
+		self.stats.Text = text
+	end
 end
 
 function Hud:setBadge(text: string)

@@ -577,7 +577,9 @@ function Sampler:column(x: number, z: number)
 		road:ensureFlags(kn)
 		local tunnel = road:isTunnel(kn)
 		local bridge = not tunnel and road:isBridge(kn)
-		local target = ys - (ad <= hw and 0.9 or 0.35)
+		-- well below the road slab (smooth terrain can bulge a little above
+		-- its nominal height), just below the edge on the verge
+		local target = ys - (ad <= hw and 1.5 or 0.45)
 		local diff = pre - target
 		local tc = cfg.Tunnel
 		local tunnelHalf = hw + 4
@@ -591,7 +593,7 @@ function Sampler:column(x: number, z: number)
 			if ad < tunnelHalf then
 				local q = ad / tunnelHalf
 				local ceiling = ys + tc.WallHeight + 1 + (tc.CeilingHeight - tc.WallHeight + 1) * sqrt(max(0, 1 - q * q))
-				vb, vt = ys - 0.9, ceiling
+				vb, vt = ys - 1.5, ceiling
 				flags += FLAG.Tunnel
 				if water > vb then
 					water = NEG_INF

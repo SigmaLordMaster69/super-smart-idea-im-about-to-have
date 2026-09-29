@@ -129,8 +129,38 @@ function RoadBuilder:_strip(parent, a: number, b: number, filter, spec, origin: 
 		p.BottomSurface = Enum.SurfaceType.Smooth
 		p.Size = Vector3.new(width, thick, len + 0.5 * width * turn + 0.12)
 		p.CFrame = cf - origin
+		if spec.transparency then
+			p.Transparency = spec.transparency
+		end
 		p.Parent = parent
 		k = kEnd
+	end
+end
+
+-- Premade guard rail segments laid end to end along the rail. Segments sit
+-- on a fixed grid of arc length, so neighbouring chunks line up.
+function RoadBuilder:_railSegments(a, b, side, hasRail, rail, origin, parent)
+	local road = self.world.road
+	local step = self.step
+	local len = rail.length
+	local sA, sB = (a - 1) * step, b * step
+	local n = math.ceil(sA / len)
+	while n * len < sB do
+		local s0, s1 = n * len, (n + 1) * len
+		local k0, k1 = floor(s0 / step) + 1, floor(s1 / step) + 1
+		if hasRail(k0) and hasRail(k1) then
+			local pA, _, rA = road:frameAt(s0)
+			local pB, _, rB = road:frameAt(s1)
+			local a3 = pA + rA * side * (self.hw + 1.3)
+			local b3 = pB + rB * side * (self.hw + 1.3)
+			local mid = (a3 + b3) * 0.5
+			-- the same face of the model looks at the road on both sides
+			local cf = CFrame.lookAt(mid, mid + (b3 - a3)) * CFrame.Angles(0, side < 0 and math.pi or 0, 0)
+			local seg = rail.template:Clone()
+			seg:PivotTo(cf - origin)
+			seg.Parent = parent
+		end
+		n += 1
 	end
 end
 
@@ -220,17 +250,18 @@ function RoadBuilder:_buildRun(a: number, b: number, origin: Vector3, parent)
 	local paint = Enum.Material.SmoothPlastic
 	for _, side in { -1, 1 } do
 		self:_strip(parent, a, b, always, {
-			name = "EdgeLine", offset = side * (laneEdge + 0.3), width = 0.5, top = 0.04, thickness = 0.1,
+			name = "EdgeLine", offset = side * (laneEdge + 0.3), width = 0.5, top = 0.09, thickness = 0.12,
 			material = paint, color = rc.EdgeLineColor, shadow = false,
 		}, origin)
 		self:_strip(parent, a, b, noPassing, {
-			name = "CenterLine", offset = side * 0.35, width = 0.3, top = 0.04, thickness = 0.1,
+			name = "CenterLine", offset = side * 0.35, width = 0.3, top = 0.09, thickness = 0.12,
 			material = paint, color = rc.CenterLineColor, shadow = false,
 		}, origin)
 	end
 	self:_dashes(a, b, noPassing, origin, parent)
 
-	-- guard rails
+	-- guard rails (asset segments, if provided, sit on an invisible collider)
+	local railAsset = self.props.assets and self.props.assets.rail
 	for _, side in { -1, 1 } do
 		local function hasRail(k)
 			return road:hasRail(k, side)
@@ -238,7 +269,12 @@ function RoadBuilder:_buildRun(a: number, b: number, origin: Vector3, parent)
 		self:_strip(parent, a, b, hasRail, {
 			name = "GuardRail", offset = side * (hw + 1.2), width = 0.35, top = 2.7, thickness = 1.1,
 			material = Enum.Material.Metal, color = RAIL, collide = true,
+			transparency = railAsset and 1 or 0,
 		}, origin)
+		if railAsset then
+			self:_railSegments(a, b, side, hasRail, railAsset, origin, parent)
+			continue
+		end
 		for k = a, b do
 			if k % cfg.GuardRail.PostSpacing == 0 and hasRail(k) then
 				local p, f, r, u = self:_frame(k)
@@ -279,7 +315,7 @@ function RoadBuilder:_dashes(a, b, noPassing, origin, parent)
 			local pA, _, _, uA = road:frameAt(s0)
 			local pB, _, _, uB = road:frameAt(s0 + rc.DashLength)
 			local up = (uA + uB).Unit
-			local mid = (pA + pB) * 0.5 + up * 0.04
+			local mid = (pA + pB) * 0.5 + up * 0.09
 			local dir = pB - pA
 			local p = Instance.new("Part")
 			p.Name = "Dash"
@@ -290,8 +326,8 @@ function RoadBuilder:_dashes(a, b, noPassing, origin, parent)
 			p.CastShadow = false
 			p.Material = Enum.Material.SmoothPlastic
 			p.Color = rc.CenterLineColor
-			p.Size = Vector3.new(0.4, 0.1, dir.Magnitude)
-			p.CFrame = CFrame.lookAt(mid, mid + dir, up) * CFrame.new(0, -0.05, 0) - origin
+			p.Size = Vector3.new(0.4, 0.12, dir.Magnitude)
+			p.CFrame = CFrame.lookAt(mid, mid + dir, up) * CFrame.new(0, -0.06, 0) - origin
 			p.Parent = parent
 		end
 		n += 1
@@ -516,7 +552,11 @@ function RoadBuilder:_roadside(a, b, origin, parent)
 				end
 			end
 			if isolated then
-				sign = props:warningSign(curv[j] > 0 and "CURVE\n\u{BB}" or "CURVE\n\u{AB}")
+				if curv[j] > 0 then
+					sign = props:warningSign("CURVE\n\u{BB}", "CurveRight")
+				else
+					sign = props:warningSign("CURVE\n\u{AB}", "CurveLeft")
+				end
 			end
 		end
 
@@ -540,9 +580,9 @@ function RoadBuilder:_roadside(a, b, origin, parent)
 			elseif k % 700 == 120 then
 				sign = props:speedLimit(SPEED[sec.type] or 70)
 			elseif k % 900 == 450 and (sec.type == "Mountains" or sec.type == "Canyon") then
-				sign = props:warningSign("FALLING\nROCKS")
+				sign = props:warningSign("FALLING\nROCKS", "FallingRocks")
 			elseif k % 1000 == 700 and (sec.type == "Forest" or sec.type == "Meadow" or sec.type == "RiverValley") then
-				sign = props:warningSign("DEER\nCROSSING")
+				sign = props:warningSign("DEER\nCROSSING", "Deer")
 			end
 		end
 

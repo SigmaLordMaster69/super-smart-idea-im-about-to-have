@@ -26,6 +26,7 @@ local AutoDrive = require(script.AutoDrive)
 local Input = require(script.Input)
 local Hud = require(script.Hud)
 local Atmosphere = require(script.Atmosphere)
+local AssetLibrary = require(script.AssetLibrary)
 
 local player = Players.LocalPlayer
 local rc = Config.Road
@@ -53,7 +54,16 @@ local hud = Hud.new(seed)
 Atmosphere.apply(Config)
 
 local world = World.new(Config, seed)
-local manager = ChunkManager.new(world, Config, Workspace.Terrain)
+
+-- premade models from ReplicatedStorage.InfiniteRoadAssets (optional)
+local assets = AssetLibrary.new(ReplicatedStorage:FindFirstChild("InfiniteRoadAssets"))
+if #assets.summary > 0 then
+	print("[InfiniteRoad] using asset pack models: " .. table.concat(assets.summary, ", "))
+else
+	print("[InfiniteRoad] no asset pack models found, using built-in props")
+end
+
+local manager = ChunkManager.new(world, Config, Workspace.Terrain, assets)
 
 -- the car replaces the default character controls
 task.spawn(function()
@@ -139,7 +149,7 @@ end
 -- Car
 ---------------------------------------------------------------------------
 local colorRng = Random.new(player.UserId + seed)
-local car = Car.new(Config, Config.Car.Colors[colorRng:NextInteger(1, #Config.Car.Colors)])
+local car = Car.new(Config, Config.Car.Colors[colorRng:NextInteger(1, #Config.Car.Colors)], assets)
 car.model.Parent = Workspace
 
 -- Roblox-space CFrame in the driving lane at arc length s
@@ -189,6 +199,20 @@ input:on("hud", function()
 	hudVisible = not hudVisible
 	hud:setVisible(hudVisible)
 end)
+local statsVisible = false
+input:on("stats", function()
+	statsVisible = not statsVisible
+	hud:setStats(statsVisible and "" or nil)
+end)
+
+if Config.Sounds.Ambience ~= "" then
+	local ambience = Instance.new("Sound")
+	ambience.SoundId = Config.Sounds.Ambience
+	ambience.Looped = true
+	ambience.Volume = 0.3
+	ambience.Parent = Workspace.CurrentCamera
+	ambience:Play()
+end
 
 ---------------------------------------------------------------------------
 -- Per-frame
@@ -231,6 +255,7 @@ local lastS = rc.SpawnDistance
 local lastReport = os.clock()
 local currentSection = nil
 local upsideDown = 0
+local frames, lastStats = 0, os.clock()
 
 RunService.Heartbeat:Connect(function(dt)
 	local cf = car:getCFrame()
@@ -274,6 +299,24 @@ RunService.Heartbeat:Connect(function(dt)
 	end
 
 	Atmosphere.step(dt, Config)
+
+	frames += 1
+	if statsVisible and os.clock() - lastStats > 0.5 then
+		local fps = frames / (os.clock() - lastStats)
+		frames, lastStats = 0, os.clock()
+		local st = manager.stats
+		hud:setStats(string.format(
+			"%d fps   generation %.1f ms/frame\nchunks %d loaded, %d waiting   built %d   rebases %d\ns = %.0f   world (%.0f, %.0f)   %s (%s)\nroad sample %d   %s%s   wheels on ground %d",
+			fps, manager.lastWork * 1000, manager:loadedCount(), manager:pendingCount(), st.built, st.rebases,
+			s, worldPos.X, worldPos.Z, sec.name, sec.type,
+			math.floor(s / rc.SampleSpacing) + 1,
+			world.road:isTunnel(math.floor(s / rc.SampleSpacing) + 1) and "tunnel " or "",
+			world.road:isBridge(math.floor(s / rc.SampleSpacing) + 1) and "bridge " or "",
+			car.grounded
+		))
+	elseif not statsVisible then
+		frames, lastStats = 0, os.clock()
+	end
 
 	if report and os.clock() - lastReport > 5 then
 		lastReport = os.clock()

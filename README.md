@@ -40,6 +40,10 @@ rojo build default.project.json -o InfiniteScenicRoad.rbxl   # build a place fil
 rojo serve
 ```
 
+### Updating a place you already have open
+- **Nothing changed in Studio yet?** Close it and open the new `InfiniteScenicRoad.rbxl`.
+- **Made changes you want to keep?** Run `rojo serve` and connect the Rojo plugin: the scripts sync into your open place and your own models stay put.
+
 ### Required place settings
 If you copy the scripts into your own place instead:
 - **Workspace.StreamingEnabled = false.** The world is generated on each client, and streaming would delete that client-made terrain.
@@ -59,8 +63,48 @@ If you copy the scripts into your own place instead:
 | Put the car back on the road | R | B | RESET |
 | Time of day | T | D-pad up | |
 | Hide HUD | H | D-pad down | |
+| Stats overlay (FPS, chunks, position) | F3 | | |
 
 Pressing any drive key turns autodrive off. A car that flips or ends up in the water is put back on the road automatically.
+
+---
+
+## Using asset packs (premade models)
+
+Everything the game builds from parts can be replaced by premade models from the Toolbox or Creator Store. There's no code to edit:
+
+1. In Studio, open **ReplicatedStorage → InfiniteRoadAssets**. It has one folder per slot, and a `README` script inside explains each one.
+2. Insert an asset pack from the Toolbox, then drag the individual models into the matching slot folder:
+
+   | Slot | What to put in it | Toolbox search ideas |
+   |---|---|---|
+   | `Trees/Pine`, `SnowPine`, `Oak`, `OakAutumn`, `Birch`, `BirchAutumn`, `Cypress`, `Cactus` | tree models (several per folder = random variants) | "low poly tree pack", "pine tree", "stylized nature pack" |
+   | `Plants/Bush`, `DryBush`, `Flowers` | small plants | "bush pack", "flower patch" |
+   | `Rocks` | boulders | "rock pack", "low poly rocks" |
+   | `Signs/CurveLeft`, `CurveRight`, `ChevronLeft`, `ChevronRight`, `Tunnel`, `SpeedLimit`, `FallingRocks`, `Deer`, `Guide`, `Marker` | road sign models (front facing -Z) | "road sign pack", "traffic signs" |
+   | `Road/GuardRail` | one straight guard rail segment, repeated along every rail | "guard rail", "highway barrier" |
+   | `Road/Delineator`, `Road/RoadEnd` | roadside post, barrier | "road post", "road barrier" |
+   | `Car/Body` | any car model, nose towards -Z | "car model", "low poly car" |
+
+3. Press Play. The Output window prints which slots were picked up.
+
+Each model is **cleaned** before use: scripts, sounds, seats, humanoids, welds and constraints are removed, so scripts inside free models never run. It is then anchored, pivoted at its base, and auto-scaled (trees 18–48 studs, plants, rocks; signs only if way off).
+
+A car body is scaled to 15 studs and welded onto the physics chassis. Parts named *wheel/tire/tyre/rim* are found and attached to the suspension, so they spin and steer, and the collision box resizes to fit the body.
+
+Empty slots keep the built-in version. You can tweak individual models with attributes, set on the model or on its slot folder:
+
+| Attribute | Type | Use |
+|---|---|---|
+| `KeepSize` | bool | keep the model's own size |
+| `Scale` | number | extra scale factor |
+| `YawOffset` | number | degrees to turn it (fix a sign facing backwards, or a car driving sideways) |
+| `HeightOffset` | number | raise (+) or sink (-) it, e.g. -1 to bury roots |
+| `Collide` | bool | whether the car hits it |
+
+Terrain textures come from Roblox materials, so a `MaterialVariant` pack in **MaterialService** (e.g. realistic grass, rock or sand) restyles the whole world too.
+
+**Sounds:** paste audio ids from the Toolbox into `Config.Sounds` (`Engine`, `Wind`, `Ambience`). The engine pitch and wind volume follow your speed.
 
 ---
 
@@ -112,6 +156,8 @@ src/client/     StarterPlayerScripts.InfiniteRoadClient
   Props.luau           procedural trees, rocks, signs (no assets needed)
   Car.luau, AutoDrive.luau, CameraController.luau, Input.luau, Hud.luau, Atmosphere.luau
 src/server/     ServerScriptService.InfiniteRoadServer (seed + leaderboard)
+  AssetLibrary.luau    premade model slots (asset packs)
+assets/         README shown inside ReplicatedStorage.InfiniteRoadAssets
 tools/          offline tests and preview renderers (Lune + Python)
 ```
 
@@ -139,6 +185,7 @@ The generator and the chunk builders are tested outside Roblox with [Lune](https
 lune run tools/check_syntax                 # every source file compiles; the place file has the right hierarchy and settings
 lune run tools/test_road [seed] [studs]     # road invariants: monotonic X, min radius, max grade, flags, determinism, projection
 lune run tools/test_chunks [seed]           # full chunk pipeline: voxels, road, tunnels, bridges, decoration, rebase
+lune run tools/test_assets                  # fake asset packs: cleaning, scaling, placement, guard rails, car body + wheels
 lune run tools/curve_stats [seed]           # curve radius distribution
 lune run tools/list_sections [seed]         # region sequence
 

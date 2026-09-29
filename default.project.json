@@ -5,6 +5,137 @@
     "ReplicatedStorage": {
       "InfiniteRoad": {
         "$path": "src/shared"
+      },
+      "InfiniteRoadAssets": {
+        "$className": "Folder",
+        "$ignoreUnknownInstances": true,
+        "README": {
+          "$path": "assets/README.luau"
+        },
+        "Trees": {
+          "Pine": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          },
+          "SnowPine": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          },
+          "Oak": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          },
+          "OakAutumn": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          },
+          "Birch": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          },
+          "BirchAutumn": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          },
+          "Cypress": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          },
+          "Cactus": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          },
+          "$className": "Folder",
+          "$ignoreUnknownInstances": true
+        },
+        "Plants": {
+          "Bush": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          },
+          "DryBush": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          },
+          "Flowers": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          },
+          "$className": "Folder",
+          "$ignoreUnknownInstances": true
+        },
+        "Rocks": {
+          "$className": "Folder",
+          "$ignoreUnknownInstances": true
+        },
+        "Signs": {
+          "CurveLeft": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          },
+          "CurveRight": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          },
+          "ChevronLeft": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          },
+          "ChevronRight": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          },
+          "Tunnel": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          },
+          "SpeedLimit": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          },
+          "FallingRocks": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          },
+          "Deer": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          },
+          "Guide": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          },
+          "Marker": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          },
+          "$className": "Folder",
+          "$ignoreUnknownInstances": true
+        },
+        "Road": {
+          "GuardRail": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          },
+          "Delineator": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          },
+          "RoadEnd": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          },
+          "$className": "Folder",
+          "$ignoreUnknownInstances": true
+        },
+        "Car": {
+          "Body": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          },
+          "$className": "Folder",
+          "$ignoreUnknownInstances": true
+        }
       }
     },
     "ServerScriptService": {
@@ -36,8 +167,16 @@
           "Anchored": true,
           "CanCollide": true,
           "Transparency": 1,
-          "Size": [16, 1, 16],
-          "Position": [0, 1500, 0],
+          "Size": [
+            16,
+            1,
+            16
+          ],
+          "Position": [
+            0,
+            1500,
+            0
+          ],
           "Neutral": true,
           "Duration": 0
         }

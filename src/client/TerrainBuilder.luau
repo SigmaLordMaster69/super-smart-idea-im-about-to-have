@@ -61,7 +61,7 @@ function TerrainBuilder:_surface(ty, hint, flags, slope, h, water, v)
 		return M.Asphalt
 	end
 	if btest(flags, FLAG.Shoulder) then
-		return ty == T.Canyon and M.Ground or (v > 0.2 and M.Ground or M.Mud)
+		return M.Ground
 	end
 	if water > h + 0.3 then
 		if hint == HINT.Riverbed then
