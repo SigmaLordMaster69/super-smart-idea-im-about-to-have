@@ -61,7 +61,8 @@ Config.Tunnel = {
 	MergeGap = 22, -- samples; shorter daylight gaps between tunnels get merged
 	WallHeight = 15,
 	CeilingHeight = 25,
-	LightSpacing = 12, -- samples between tunnel lights
+	LampSpacing = 8, -- samples between glowing ceiling lamps
+	LightSpacing = 16, -- samples between lamps that also cast light (multiple of LampSpacing)
 }
 
 Config.Bridge = {
@@ -78,7 +79,7 @@ Config.GuardRail = {
 	MinLength = 12,
 	MergeGap = 8,
 	Pad = 4,
-	PostSpacing = 2, -- samples between posts
+	PostSpacing = 4, -- samples between posts
 }
 
 ---------------------------------------------------------------------------
@@ -117,6 +118,36 @@ Config.World = {
 	FrameBudget = 0.007, -- seconds of generation work per frame while driving
 	LoadingFrameBudget = 0.05, -- seconds per frame while the loading screen is up
 	RebaseDistance = 16384, -- recentre the world once the car is this far from the Roblox origin
+}
+
+---------------------------------------------------------------------------
+-- Quality presets. "Auto" picks one from the device and the player's
+-- graphics setting; players can change it in the settings menu.
+--   Workers: parallel terrain workers (0 = build on the main thread)
+---------------------------------------------------------------------------
+Config.Quality = {
+	Default = "Auto",
+	Order = { "Low", "Medium", "High", "Ultra" },
+	Low = {
+		TerrainRadius = 560, NearDecorRadius = 280, FarDecorRadius = 560,
+		DecorDensity = 0.6, TreeShadows = false, Workers = 2,
+		BudgetMin = 0.002, BudgetMax = 0.006,
+	},
+	Medium = {
+		TerrainRadius = 740, NearDecorRadius = 380, FarDecorRadius = 740,
+		DecorDensity = 0.8, TreeShadows = false, Workers = 3,
+		BudgetMin = 0.003, BudgetMax = 0.008,
+	},
+	High = {
+		TerrainRadius = 900, NearDecorRadius = 460, FarDecorRadius = 900,
+		DecorDensity = 1, TreeShadows = true, Workers = 3,
+		BudgetMin = 0.004, BudgetMax = 0.010,
+	},
+	Ultra = {
+		TerrainRadius = 1150, NearDecorRadius = 560, FarDecorRadius = 1150,
+		DecorDensity = 1, TreeShadows = true, Workers = 4,
+		BudgetMin = 0.004, BudgetMax = 0.012,
+	},
 }
 
 ---------------------------------------------------------------------------
@@ -172,6 +203,35 @@ Config.Car = {
 	AutoDriveLateralAccel = 70, -- studs/s^2 it is willing to pull in corners
 }
 
+-- Motorcycle: overrides on top of Config.Car. The physics still use four
+-- corners (HalfTrack wide, like invisible outriggers) so it cannot tip over;
+-- the bike you see has two wheels and leans into corners.
+Config.Motorcycle = {
+	ChassisSize = Vector3.new(3.2, 2, 8.5),
+	HalfTrack = 2.1,
+	HalfBase = 3.4,
+	WheelRadius = 1.35,
+	SuspensionLength = 2.2,
+	SuspensionFrequency = 2.6,
+	TopSpeed = 175,
+	Acceleration = 58,
+	BrakeDeceleration = 120,
+	MaxSteerLow = math.rad(30),
+	MaxSteerHigh = math.rad(5),
+	SteerSpeed = 3.8,
+	Grip = 1.3,
+	HandbrakeGrip = 0.5,
+	BodyLength = 8, -- premade bikes are scaled to this length
+	LeanMax = math.rad(42),
+	Colors = {
+		Color3.fromRGB(210, 40, 40),
+		Color3.fromRGB(30, 30, 34),
+		Color3.fromRGB(240, 150, 30),
+		Color3.fromRGB(40, 90, 200),
+		Color3.fromRGB(90, 180, 90),
+	},
+}
+
 ---------------------------------------------------------------------------
 -- Sounds: paste audio asset ids ("rbxassetid://123...") from the Toolbox.
 -- Empty strings mean silence.
@@ -180,6 +240,34 @@ Config.Sounds = {
 	Engine = "", -- looping engine hum, pitched up with speed
 	Wind = "", -- looping wind, louder with speed
 	Ambience = "", -- looping background (birds, waves...)
+	MotorcycleEngine = "", -- engine loop for the motorcycle (falls back to Engine)
+	Rain = "", -- looping rain, volume follows rain strength
+	Thunder = "", -- one-shot thunder clap after lightning
+}
+
+---------------------------------------------------------------------------
+-- Particle textures (defaults are built-in engine textures). Paste image
+-- ids from the Toolbox for nicer rain/snow/leaves.
+---------------------------------------------------------------------------
+Config.Textures = {
+	Rain = "rbxasset://textures/particles/fire_sparks_main.dds",
+	Snow = "rbxasset://textures/particles/smoke_main.dds",
+	Leaf = "rbxasset://textures/particles/smoke_main.dds",
+}
+
+---------------------------------------------------------------------------
+-- Weather and seasons
+---------------------------------------------------------------------------
+Config.Weather = {
+	Start = "Auto", -- Auto, Clear, Cloudy, Rain, Storm, Fog, Snow
+	MinDuration = 110, -- seconds a weather lasts in Auto mode
+	MaxDuration = 260,
+	TransitionTime = 14, -- seconds (time constant of the blend)
+}
+
+Config.Seasons = {
+	Start = "Auto", -- Auto (cycles), Spring, Summer, Autumn, Winter
+	CycleMinutes = 10, -- how long each season lasts in Auto mode
 }
 
 ---------------------------------------------------------------------------

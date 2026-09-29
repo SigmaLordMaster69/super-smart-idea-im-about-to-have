@@ -21,6 +21,8 @@
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
 
+local Motorcycle = require(script.Parent.Motorcycle)
+
 local Car = {}
 Car.__index = Car
 
@@ -61,31 +63,8 @@ local function visual(model, chassis, className, props)
 	return p
 end
 
-function Car.new(config, color: Color3, assets)
-	local self = setmetatable({}, Car)
-	self.config = config.Car
-	local cc = config.Car
-
-	local model = Instance.new("Model")
-	model.Name = "InfiniteRoadCar"
-
-	local chassis = Instance.new("Part")
-	chassis.Name = "Chassis"
-	chassis.Size = CHASSIS_SIZE
-	chassis.Color = color
-	chassis.Material = Enum.Material.SmoothPlastic
-	chassis.CanQuery = false
-	chassis.CanTouch = false
-	chassis.TopSurface = Enum.SurfaceType.Smooth
-	chassis.BottomSurface = Enum.SurfaceType.Smooth
-	chassis.CustomPhysicalProperties = PhysicalProperties.new(0.9, 0.2, 0.05, 1, 1)
-	chassis.CFrame = CFrame.new(0, 50, 0)
-	chassis.Parent = model
-	model.PrimaryPart = chassis
-	self.chassis = chassis
-	self.model = model
-
-	-- body
+-- the procedural car body (the chassis box itself is the lower body)
+local function buildCarBody(self, model, chassis, color)
 	local black = rgb(28, 28, 30)
 	local glass = rgb(36, 44, 54)
 	visual(model, chassis, "Part", { Name = "Hood", Size = Vector3.new(6.9, 0.5, 4.8), CFrame = CFrame.new(0, 1.35, -4.9), Color = color })
@@ -130,11 +109,70 @@ function Car.new(config, color: Color3, assets)
 			Color = rgb(120, 16, 16),
 		}))
 	end
+end
 
-	-- corners: front-left, front-right, rear-left, rear-right (front is -Z)
+-- Vehicle tuning: Config.Car, with Config.Motorcycle on top for bikes.
+function Car.tuning(config, kind: string)
+	local tune = table.clone(config.Car)
+	if kind == "Motorcycle" then
+		for k, v in config.Motorcycle do
+			tune[k] = v
+		end
+	end
+	return tune
+end
+
+--[[
+	kind: "Car" (default) or "Motorcycle". Both use the same physics; the
+	motorcycle has a narrower, shorter footprint, its own tuning, and leans
+	visually into corners.
+]]
+function Car.new(config, color: Color3, assets, kind: string?)
+	local self = setmetatable({}, Car)
+	kind = kind or "Car"
+	self.kind = kind
+	local cc = Car.tuning(config, kind)
+	self.config = cc
+	self.gripScale = 1
+	self.wetness = 0
+	self.lean = 0
+	self.attachY = ATTACH_Y
+	self.speed = 0
+	self.steer = 0
+
+	local model = Instance.new("Model")
+	model.Name = kind == "Motorcycle" and "InfiniteRoadBike" or "InfiniteRoadCar"
+
+	local chassis = Instance.new("Part")
+	chassis.Name = "Chassis"
+	chassis.Size = cc.ChassisSize or CHASSIS_SIZE
+	chassis.Color = color
+	chassis.Material = Enum.Material.SmoothPlastic
+	chassis.CanQuery = false
+	chassis.CanTouch = false
+	chassis.TopSurface = Enum.SurfaceType.Smooth
+	chassis.BottomSurface = Enum.SurfaceType.Smooth
+	chassis.CustomPhysicalProperties = PhysicalProperties.new(0.9, 0.2, 0.05, 1, 1)
+	chassis.CFrame = CFrame.new(0, 50, 0)
+	chassis.Parent = model
+	model.PrimaryPart = chassis
+	self.chassis = chassis
+	self.model = model
+
+	if kind == "Motorcycle" then
+		chassis.Transparency = 1 -- the bike body is drawn by Motorcycle
+		Motorcycle.build(self, color, config)
+	else
+		buildCarBody(self, model, chassis, color)
+	end
+
+	-- Corners: front-left, front-right, rear-left, rear-right (front is -Z).
+	-- The motorcycle keeps four physics corners (like outriggers, which keep
+	-- it stable); only its visual has two wheels.
+	local halfTrack, halfBase = cc.HalfTrack or HALF_TRACK, cc.HalfBase or HALF_BASE
 	self.wheels = {}
 	for i, def in { { -1, -1 }, { 1, -1 }, { -1, 1 }, { 1, 1 } } do
-		local x, z = def[1] * HALF_TRACK, def[2] * HALF_BASE
+		local x, z = def[1] * halfTrack, def[2] * halfBase
 		local att = Instance.new("Attachment")
 		att.Name = "Force" .. i
 		att.Position = Vector3.new(x, FORCE_Y, z)
@@ -146,11 +184,26 @@ function Car.new(config, color: Color3, assets)
 		force.Force = Vector3.zero
 		force.Parent = chassis
 
+		if kind == "Motorcycle" then
+			self.wheels[i] = {
+				x = x,
+				z = z,
+				radius = cc.WheelRadius,
+				front = def[2] < 0,
+				force = force,
+				attachment = att,
+				length = cc.SuspensionLength,
+				spin = 0,
+				grounded = false,
+			}
+			continue
+		end
+
 		local wheel = Instance.new("Part")
 		wheel.Name = "Wheel" .. i
 		wheel.Shape = Enum.PartType.Cylinder
 		wheel.Size = Vector3.new(1.5, cc.WheelRadius * 2, cc.WheelRadius * 2)
-		wheel.Color = black
+		wheel.Color = rgb(28, 28, 30)
 		wheel.Material = Enum.Material.SmoothPlastic
 		wheel.Massless = true
 		wheel.CanCollide = false
@@ -214,16 +267,64 @@ function Car.new(config, color: Color3, assets)
 	self.grounded = 0
 	self.speed = 0
 
-	if assets and assets.carSource then
+	if kind == "Car" and assets and assets.carSource then
 		local ok, err = pcall(function()
 			self:_applyBody(assets.carSource, assets.carFolder)
 		end)
 		if not ok then
 			warn("[InfiniteRoad] could not use the car model from InfiniteRoadAssets.Car.Body: " .. tostring(err))
 		end
+	elseif kind == "Motorcycle" and assets and assets.bikeSource then
+		local ok, err = pcall(Motorcycle.applyBody, self, assets.bikeSource, assets.bikeFolder)
+		if not ok then
+			warn("[InfiniteRoad] could not use the model from InfiniteRoadAssets.Motorcycle.Body: " .. tostring(err))
+		end
 	end
+	self:_spray(cc)
 	self:_sounds(config.Sounds)
 	return self
+end
+
+-- Water / snow thrown up behind the wheels on wet roads.
+function Car:_spray(cc)
+	self.sprayEmitters = {}
+	local halfTrack, halfBase = cc.HalfTrack or HALF_TRACK, cc.HalfBase or HALF_BASE
+	local groundY = ATTACH_Y - cc.SuspensionLength - cc.WheelRadius + 0.6
+	local xs = self.kind == "Motorcycle" and { 0 } or { -halfTrack, halfTrack }
+	for _, x in xs do
+		local att = Instance.new("Attachment")
+		att.Name = "Spray"
+		att.Position = Vector3.new(x, groundY, halfBase + 0.6)
+		att.Parent = self.chassis
+		local e = Instance.new("ParticleEmitter")
+		e.Texture = "rbxasset://textures/particles/smoke_main.dds"
+		e.Color = ColorSequence.new(rgb(200, 206, 212))
+		e.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.55), NumberSequenceKeypoint.new(1, 1) })
+		e.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.8), NumberSequenceKeypoint.new(1, 3.2) })
+		e.Lifetime = NumberRange.new(0.35, 0.6)
+		e.Speed = NumberRange.new(6, 12)
+		e.SpreadAngle = Vector2.new(25, 25)
+		e.EmissionDirection = Enum.NormalId.Back
+		e.Drag = 3
+		e.LightInfluence = 1
+		e.Rate = 0
+		e.Parent = att
+		table.insert(self.sprayEmitters, e)
+	end
+end
+
+-- Road conditions from weather and season: grip multiplier and wetness
+-- (0..1, drives the spray).
+function Car:setSurface(gripScale: number, wetness: number)
+	self.gripScale = gripScale
+	self.wetness = wetness
+end
+
+-- Steering lock at the current speed (for autodrive).
+function Car:maxSteer(): number
+	local cc = self.config
+	local t = clamp(abs(self.speed) / cc.TopSpeed, 0, 1)
+	return cc.MaxSteerLow + (cc.MaxSteerHigh - cc.MaxSteerLow) * sqrt(t)
 end
 
 local function isWheelName(name: string): boolean
@@ -408,7 +509,8 @@ function Car:_sounds(sounds)
 		snd:Play()
 		return snd
 	end
-	self.engineSound = make(sounds.Engine, 0.35)
+	local engineId = self.kind == "Motorcycle" and sounds.MotorcycleEngine ~= "" and sounds.MotorcycleEngine or sounds.Engine
+	self.engineSound = make(engineId, 0.35)
 	self.windSound = make(sounds.Wind, 0)
 end
 
@@ -508,7 +610,7 @@ function Car:step(dt: number, throttle: number, steerInput: number, handbrake: b
 		local vLong, vLat = cv:Dot(wf), cv:Dot(wr)
 
 		local rear = not w.front
-		local grip = (handbrake and rear) and cc.HandbrakeGrip or cc.Grip
+		local grip = ((handbrake and rear) and cc.HandbrakeGrip or cc.Grip) * self.gripScale
 		local limit = grip * spring
 
 		-- gravity pulling this corner along the ground; friction has to hold
@@ -566,11 +668,29 @@ function Car:step(dt: number, throttle: number, steerInput: number, handbrake: b
 end
 
 -- Move the visual wheels (call every render frame).
-function Car:render()
+function Car:render(dt: number?)
+	dt = dt or 1 / 60
+	local speed = math.abs(self.speed)
+	local spray = self.wetness > 0.2 and math.floor(math.min(speed / 60, 1) * self.wetness * 90) or 0
+	if spray ~= self.sprayRate then
+		self.sprayRate = spray
+		for _, e in self.sprayEmitters do
+			e.Rate = spray
+		end
+	end
+	if self.kind == "Motorcycle" then
+		Motorcycle.render(self, dt)
+		self:_renderLights()
+		return
+	end
 	for _, w in self.wheels do
 		local steer = w.front and self.steer or 0
 		w.weld.C0 = CFrame.new(w.x, ATTACH_Y - w.length, w.z) * CFrame.Angles(0, -steer, 0) * CFrame.Angles(-w.spin, 0, 0)
 	end
+	self:_renderLights()
+end
+
+function Car:_renderLights()
 	local speed = math.abs(self.speed)
 	if self.engineSound then
 		self.engineSound.PlaybackSpeed = 0.7 + math.min(speed / self.config.TopSpeed, 1.2) * 1.3

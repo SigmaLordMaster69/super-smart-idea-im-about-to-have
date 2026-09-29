@@ -32,6 +32,9 @@ local BIRCH_LEAF = rgb(146, 184, 74)
 local CYPRESS = rgb(58, 88, 56)
 local CACTUS = rgb(88, 128, 70)
 local FLOWERS = { rgb(240, 90, 110), rgb(250, 220, 70), rgb(240, 240, 250), rgb(170, 120, 230), rgb(250, 150, 60) }
+local BLOSSOM = { rgb(244, 190, 212), rgb(250, 232, 240), rgb(236, 170, 198) }
+local SPRING_GREEN = rgb(128, 184, 74)
+local BARE_BARK = rgb(88, 70, 58)
 
 local SIGN_YELLOW = rgb(244, 196, 40)
 local SIGN_GREEN = rgb(30, 110, 64)
@@ -95,7 +98,7 @@ end
 ---------------------------------------------------------------------------
 local BUILDERS = {}
 
-function BUILDERS.pine(sc, variant, far)
+function BUILDERS.pine(sc, variant, far, style)
 	local m = Instance.new("Model")
 	local green = PINE_GREENS[variant % #PINE_GREENS + 1]
 	if far then
@@ -112,7 +115,7 @@ function BUILDERS.pine(sc, variant, far)
 	return finish(m, "Pine")
 end
 
-function BUILDERS.snowpine(sc, variant, far)
+function BUILDERS.snowpine(sc, variant, far, style)
 	local m = Instance.new("Model")
 	if far then
 		cylinder(m, 5 * sc, 20 * sc, 10 * sc, FROST)
@@ -128,16 +131,45 @@ function BUILDERS.snowpine(sc, variant, far)
 	return finish(m, "SnowPine")
 end
 
-local function oakColor(variant, autumn)
-	if autumn then
+local function oakColor(variant, style)
+	if style.autumn then
 		return AUTUMN[variant % #AUTUMN + 1]
+	elseif style.blossom and variant % 3 == 0 then
+		return BLOSSOM[variant % #BLOSSOM + 1]
+	elseif style.blossom then
+		return SPRING_GREEN:Lerp(OAK_GREENS[variant % #OAK_GREENS + 1], 0.4)
 	end
 	return OAK_GREENS[variant % #OAK_GREENS + 1]
 end
 
-function BUILDERS.oak(sc, variant, far, autumn)
+-- winter: a trunk with a few bare branches
+local function bareTree(m, sc, trunkH, trunkD, bark)
+	cylinder(m, -1.5, trunkH * sc + 1.5, trunkD * sc, bark, Enum.Material.Wood, nil, true)
+	for i, a in { 0, 2.1, 4.2 } do
+		local y = (trunkH * (0.55 + i * 0.12)) * sc
+		local len = (5 - i) * sc
+		local p = newPart("Part", {
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(len, trunkD * 0.4 * sc, trunkD * 0.4 * sc),
+			CFrame = CFrame.new(0, y, 0) * CFrame.Angles(0, a, 0) * CFrame.Angles(0, 0, math.rad(40)) * CFrame.new(len / 2, 0, 0),
+			Color = bark,
+			Material = Enum.Material.Wood,
+		})
+		p.Parent = m
+	end
+end
+
+function BUILDERS.oak(sc, variant, far, style)
 	local m = Instance.new("Model")
-	local leaf = oakColor(variant, autumn)
+	if style.bare then
+		if far then
+			cylinder(m, 0, 11 * sc, 1.6 * sc, BARE_BARK)
+			return finish(m, "OakFar")
+		end
+		bareTree(m, sc, 11, 2.1, BARE_BARK)
+		return finish(m, "Oak")
+	end
+	local leaf = oakColor(variant, style)
 	if far then
 		ball(m, Vector3.new(0, 13 * sc, 0), 15 * sc, leaf)
 		return finish(m, "OakFar")
@@ -149,22 +181,32 @@ function BUILDERS.oak(sc, variant, far, autumn)
 	return finish(m, "Oak")
 end
 
-function BUILDERS.birch(sc, variant, far, autumn)
+function BUILDERS.birch(sc, variant, far, style)
 	local m = Instance.new("Model")
-	local leaf = autumn and AUTUMN[3] or BIRCH_LEAF
+	local bark = rgb(232, 230, 222)
+	if style.bare then
+		if far then
+			cylinder(m, 0, 15 * sc, 1.2 * sc, bark)
+			return finish(m, "BirchFar")
+		end
+		bareTree(m, sc, 15, 1.3, bark)
+		return finish(m, "Birch")
+	end
+	local leaf = (style.autumn and AUTUMN[3]) or (style.blossom and BLOSSOM[2]:Lerp(BIRCH_LEAF, variant % 2 == 0 and 1 or 0)) or BIRCH_LEAF
 	if far then
 		ball(m, Vector3.new(0, 14 * sc, 0), 9 * sc, leaf)
 		return finish(m, "BirchFar")
 	end
-	cylinder(m, -1.5, 15 * sc + 1.5, 1.3 * sc, rgb(232, 230, 222), Enum.Material.SmoothPlastic, nil, true)
+	cylinder(m, -1.5, 15 * sc + 1.5, 1.3 * sc, bark, Enum.Material.SmoothPlastic, nil, true)
 	ball(m, Vector3.new(0.6 * sc, 13 * sc, 0), 7.5 * sc, leaf)
 	ball(m, Vector3.new(-0.5 * sc, 16.5 * sc, 0.4 * sc), 6 * sc, leaf:Lerp(Color3.new(1, 1, 1), 0.08))
 	return finish(m, "Birch")
 end
 
 -- wind-swept coastal tree with a flat top
-function BUILDERS.cypress(sc, variant, far)
+function BUILDERS.cypress(sc, variant, far, style)
 	local m = Instance.new("Model")
+	local CYPRESS = style.frost and CYPRESS:Lerp(FROST, 0.45) or CYPRESS
 	if far then
 		cylinder(m, 9 * sc, 4 * sc, 15 * sc, CYPRESS, nil, Vector3.new(2 * sc, 0, 0))
 		return finish(m, "CypressFar")
@@ -175,7 +217,7 @@ function BUILDERS.cypress(sc, variant, far)
 	return finish(m, "Cypress")
 end
 
-function BUILDERS.cactus(sc, variant, far)
+function BUILDERS.cactus(sc, variant, far, style)
 	local m = Instance.new("Model")
 	if far then
 		cylinder(m, 0, 11 * sc, 2 * sc, CACTUS)
@@ -201,25 +243,29 @@ function BUILDERS.cactus(sc, variant, far)
 	return finish(m, "Cactus")
 end
 
-function BUILDERS.bush(sc, variant, far, autumn)
+function BUILDERS.bush(sc, variant, far, style)
 	local m = Instance.new("Model")
-	local leaf = oakColor(variant + 1, autumn):Lerp(Color3.new(), 0.1)
+	if style.bare then
+		ball(m, Vector3.new(0, 1.1 * sc, 0), 3.4 * sc, rgb(118, 96, 74))
+		return finish(m, "Bush")
+	end
+	local leaf = oakColor(variant + 1, { autumn = style.autumn }):Lerp(Color3.new(), 0.1)
 	ball(m, Vector3.new(0, 1.4 * sc, 0), 4.6 * sc, leaf)
 	ball(m, Vector3.new(1.6 * sc, 1 * sc, 0.8 * sc), 3.2 * sc, leaf)
 	return finish(m, "Bush")
 end
 
-function BUILDERS.drybush(sc, variant)
+function BUILDERS.drybush(sc, variant, far, style)
 	local m = Instance.new("Model")
 	ball(m, Vector3.new(0, 0.9 * sc, 0), 3.2 * sc, rgb(138, 128, 74):Lerp(rgb(110, 100, 60), (variant % 3) / 3))
 	return finish(m, "DryBush")
 end
 
-function BUILDERS.flowers(sc, variant)
+function BUILDERS.flowers(sc, variant, far, style)
 	local m = Instance.new("Model")
 	local rng = Random.new(variant * 17 + 3)
 	local color = FLOWERS[variant % #FLOWERS + 1]
-	for _ = 1, 6 do
+	for _ = 1, 4 do
 		local x, z = rng:NextNumber(-2.5, 2.5), rng:NextNumber(-2.5, 2.5)
 		local p = ball(m, Vector3.new(x, 0.55, z), rng:NextNumber(0.6, 1.0), color)
 		p.CastShadow = false
@@ -230,11 +276,29 @@ end
 ---------------------------------------------------------------------------
 -- Template cache
 ---------------------------------------------------------------------------
+-- Seasonal looks for the procedural trees.
+Props.SeasonStyles = {
+	Spring = { blossom = true },
+	Summer = {},
+	Autumn = { autumn = true },
+	Winter = { bare = true, frost = true },
+}
+
 function Props.new(assets)
 	local self = setmetatable({}, Props)
 	self.templates = {}
 	self.assets = assets
+	self.season = "Summer"
+	self.treeShadows = true
 	return self
+end
+
+function Props:setSeason(name: string)
+	self.season = Props.SeasonStyles[name] and name or "Summer"
+end
+
+function Props:setShadows(on: boolean)
+	self.treeShadows = on
 end
 
 -- A premade model for `kind` if the asset packs provide one.
@@ -264,11 +328,25 @@ function Props:tree(kind: string, size: number, variant: number, far: boolean, a
 		end
 	end
 	local v = variant % 3
-	local key = string.format("%s/%d/%d/%s/%s", kind, size, v, far and "f" or "n", autumn and "a" or "g")
+	local shadows = self.treeShadows and not far
+	local key = string.format("%s/%d/%d/%s/%s/%s/%s", kind, size, v, far and "f" or "n", autumn and "a" or "g", self.season, shadows and "s" or "-")
 	local t = self.templates[key]
 	if not t then
 		local scale = ({ 0.95, 1.3, 1.75 })[size]
-		t = BUILDERS[kind](scale, v, far, autumn)
+		local style = Props.SeasonStyles[self.season]
+		if autumn and not style.bare then
+			style = table.clone(style)
+			style.autumn = true
+			style.blossom = nil
+		end
+		t = BUILDERS[kind](scale, v, far, style)
+		if not shadows then
+			for _, p in t:GetDescendants() do
+				if p:IsA("BasePart") then
+					p.CastShadow = false
+				end
+			end
+		end
 		self.templates[key] = t
 	end
 	return t:Clone()
@@ -476,14 +554,6 @@ function Props:delineator(): Model
 			Size = Vector3.new(0.4, 3.6, 0.4),
 			CFrame = CFrame.new(0, 1.3, 0),
 			Color = SIGN_WHITE,
-			CastShadow = false,
-			Parent = t,
-		})
-		newPart("Part", {
-			Name = "Band",
-			Size = Vector3.new(0.42, 0.5, 0.42),
-			CFrame = CFrame.new(0, 2.5, 0),
-			Color = INK,
 			CastShadow = false,
 			Parent = t,
 		})

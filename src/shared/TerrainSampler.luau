@@ -1,3 +1,4 @@
+--!native
 --[[
 	TerrainSampler
 	--------------
@@ -331,12 +332,37 @@ end
 	by X too) and rejected with a band test. Looking them up by arc length
 	instead would clip them wherever the road runs close to north-south.
 ]]
-function Sampler:_applyCrossings(x, z, h, water, hint)
+-- Crossing candidates for every x in [xMin, xMax]. Chunk builders call
+-- this once per chunk so each column skips the lookup.
+function Sampler:beginArea(xMin: number, xMax: number)
 	local road = self.road
 	local reach = self.sections.MaxCrossingLength + 500
-	road:ensureX(x + reach + 64)
-	local buf = self._crossBuf
-	local count = self.sections:crossingsBetween(road:sAtX(x - reach), road:sAtX(x + reach), buf)
+	road:ensureX(xMax + reach + 64)
+	local list = self._areaBuf
+	if not list then
+		list = {}
+		self._areaBuf = list
+	end
+	local count = self.sections:crossingsBetween(road:sAtX(xMin - reach), road:sAtX(xMax + reach), list)
+	self._areaMin, self._areaMax, self._areaCount = xMin, xMax, count
+end
+
+function Sampler:endArea()
+	self._areaMin, self._areaMax = nil, nil
+end
+
+function Sampler:_applyCrossings(x, z, h, water, hint)
+	local buf, count
+	local areaMin = self._areaMin
+	if areaMin and x >= areaMin and x <= self._areaMax then
+		buf, count = self._areaBuf, self._areaCount
+	else
+		local road = self.road
+		local reach = self.sections.MaxCrossingLength + 500
+		road:ensureX(x + reach + 64)
+		buf = self._crossBuf
+		count = self.sections:crossingsBetween(road:sAtX(x - reach), road:sAtX(x + reach), buf)
+	end
 	if count == 0 then
 		return h, water, hint
 	end

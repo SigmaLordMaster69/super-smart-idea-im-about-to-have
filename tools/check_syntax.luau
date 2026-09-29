@@ -49,6 +49,16 @@ if fs.isFile("InfiniteScenicRoad.rbxl") then
 	need(trees and trees:FindFirstChild("Pine"), "asset folders missing")
 	local carSlot = assetRoot and assetRoot:FindFirstChild("Car")
 	need(carSlot and carSlot:FindFirstChild("Body"), "car asset slot missing")
+	local bikeSlot = assetRoot and assetRoot:FindFirstChild("Motorcycle")
+	need(bikeSlot and bikeSlot:FindFirstChild("Body"), "motorcycle asset slot missing")
+	local worker = client and client:FindFirstChild("GenWorker")
+	need(worker and worker.ClassName == "Actor", "GenWorker must be an Actor")
+	local workerScript = worker and worker:FindFirstChild("Worker")
+	need(workerScript and workerScript.ClassName == "LocalScript", "GenWorker needs its Worker LocalScript")
+	for _, name in { "Weather", "Seasons", "Environment", "Motorcycle", "WorkerPool", "Quality", "SettingsMenu" } do
+		local m = client and client:FindFirstChild(name)
+		need(m and m.ClassName == "ModuleScript", name .. " module missing")
+	end
 	print("place file checked")
 end
 

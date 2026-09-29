@@ -14,6 +14,8 @@
 	when it is built.
 ]]
 
+local Weather = require(script.Parent.Weather)
+
 local RoadBuilder = {}
 RoadBuilder.__index = RoadBuilder
 
@@ -38,6 +40,7 @@ function RoadBuilder.new(world, config, props)
 	self.step = rc.SampleSpacing
 	-- per-build frame cache
 	self._pos, self._fwd, self._right, self._up = {}, {}, {}, {}
+	self.wetness = 0 -- set by the weather; new asphalt is built wet
 	return self
 end
 
@@ -131,6 +134,12 @@ function RoadBuilder:_strip(parent, a: number, b: number, filter, spec, origin: 
 		p.CFrame = cf - origin
 		if spec.transparency then
 			p.Transparency = spec.transparency
+		end
+		if spec.asphalt then
+			local color, reflect = Weather.wetLook(spec.color, self.wetness)
+			p.Color = color
+			p.Reflectance = reflect
+			p:AddTag("IR_Asphalt")
 		end
 		p.Parent = parent
 		k = kEnd
@@ -239,11 +248,11 @@ function RoadBuilder:_buildRun(a: number, b: number, origin: Vector3, parent)
 	local asphalt = Enum.Material.Asphalt
 	self:_strip(parent, a, b, notBridge, {
 		name = "Road", offset = 0, width = hw * 2, top = 0, thickness = rc.Thickness,
-		material = asphalt, color = rc.AsphaltColor, collide = true, query = true,
+		material = asphalt, color = rc.AsphaltColor, collide = true, query = true, asphalt = true,
 	}, origin)
 	self:_strip(parent, a, b, isBridge, {
 		name = "BridgeDeck", offset = 0, width = hw * 2 + 3, top = 0, thickness = 2.5,
-		material = asphalt, color = rc.AsphaltColor, collide = true, query = true,
+		material = asphalt, color = rc.AsphaltColor, collide = true, query = true, asphalt = true,
 	}, origin)
 
 	-- markings
@@ -432,7 +441,7 @@ function RoadBuilder:_tunnels(a, b, isTunnel, origin, parent)
 			continue
 		end
 		local p, f, r, u = self:_frame(k)
-		if k % cfg.LightSpacing == 0 then
+		if k % cfg.LampSpacing == 0 then
 			local c = p + u * (ceil - 0.2)
 			local lamp = Instance.new("Part")
 			lamp.Name = "TunnelLight"
@@ -445,12 +454,15 @@ function RoadBuilder:_tunnels(a, b, isTunnel, origin, parent)
 			lamp.Color = rgb(255, 222, 170)
 			lamp.Size = Vector3.new(1.4, 0.3, 6)
 			lamp.CFrame = CFrame.lookAt(c, c + f, u) - origin
-			local light = Instance.new("PointLight")
-			light.Range = 44
-			light.Brightness = 1.3
-			light.Color = rgb(255, 214, 160)
-			light.Shadows = false
-			light.Parent = lamp
+			-- real lights are expensive; only every other lamp casts one
+			if k % cfg.LightSpacing == 0 then
+				local light = Instance.new("PointLight")
+				light.Range = 56
+				light.Brightness = 1.5
+				light.Color = rgb(255, 214, 160)
+				light.Shadows = false
+				light.Parent = lamp
+			end
 			lamp.Parent = parent
 		end
 		local entering = not isTunnel(k - 1)

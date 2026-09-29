@@ -1,3 +1,4 @@
+--!native
 --[[
 	Decorator
 	---------
@@ -39,7 +40,18 @@ function Decorator.new(world, config, props)
 	self.props = props
 	self.hw = config.Road.HalfWidth
 	self.sea = config.SeaLevel
+	self.densityScale = 1
+	self.season = "Summer"
 	return self
+end
+
+-- Quality preset: scales how many trees and plants get placed.
+function Decorator:setQuality(q)
+	self.densityScale = q.DecorDensity or 1
+end
+
+function Decorator:setSeason(name: string)
+	self.season = name
 end
 
 -- weighted pick from { {kind, weight}, ... } with r in [0, 1)
@@ -92,6 +104,7 @@ function Decorator:build(chunk, level: number, origin: Vector3, parent, yieldFn)
 	local densities = cfg.Decor.Density
 	local seed = world.seed
 	local ox, oz = origin.X, origin.Z
+	local winter = self.season == "Winter"
 
 	for cj = 0, cells - 1 do
 		for ci = 0, cells - 1 do
@@ -119,7 +132,7 @@ function Decorator:build(chunk, level: number, origin: Vector3, parent, yieldFn)
 				continue
 			end
 
-			local density = densities[typeName] or 0.2
+			local density = (densities[typeName] or 0.2) * self.densityScale
 			local clump = noise:u2(x / 260, z / 260, 131)
 			if typeName == "Meadow" then
 				density *= clump > 0.68 and 5 or 0.4
@@ -146,7 +159,7 @@ function Decorator:build(chunk, level: number, origin: Vector3, parent, yieldFn)
 
 			if r1 < density then
 				local kind = pick(TREES[typeName] or TREES.Forest, r2)
-				if kind == "pine" and snowy then
+				if kind == "pine" and (snowy or winter) then
 					kind = "snowpine"
 				end
 				local autumn = false
@@ -193,7 +206,7 @@ function Decorator:build(chunk, level: number, origin: Vector3, parent, yieldFn)
 			if slope > 0.6 or density == 0 and h > treeLine - 30 then
 				continue
 			end
-			local bushChance = (typeName == "Meadow" and 0.06) or 0.14
+			local bushChance = ((typeName == "Meadow" and 0.06) or 0.14) * (winter and 0.5 or 1)
 			if extra < bushChance then
 				local autumn = typeName == "Forest" and world.sections:get(S[ni]).autumn == true
 				local m = props:tree("bush", r3 < 0.6 and 1 or 2, floor(r2 * 100), false, autumn)
@@ -202,8 +215,9 @@ function Decorator:build(chunk, level: number, origin: Vector3, parent, yieldFn)
 				continue
 			end
 			extra -= bushChance
-			if typeName == "Meadow" or typeName == "RiverValley" or typeName == "Lake" then
-				if extra < (typeName == "Meadow" and 0.28 or 0.1) and slope < 0.35 then
+			if not winter and (typeName == "Meadow" or typeName == "RiverValley" or typeName == "Lake") then
+				local flowerChance = (typeName == "Meadow" and 0.28 or 0.1) * (self.season == "Spring" and 1.8 or 1)
+				if extra < flowerChance and slope < 0.35 then
 					local m = props:tree("flowers", 1, floor(r2 * 1000), false)
 					m:PivotTo(CFrame.new(base) * yaw)
 					m.Parent = parent

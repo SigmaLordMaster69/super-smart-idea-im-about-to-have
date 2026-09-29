@@ -118,6 +118,16 @@ local s2 = Instance.new("LocalScript")
 s2.Parent = carModel
 carModel.Parent = folderPath(root, "Car/Body")
 
+-- a 10-stud motorcycle pointing -Z with named wheels and a script inside
+local bikeModel = Instance.new("Model")
+bikeModel.Name = "PackBike"
+part(bikeModel, "Frame", Vector3.new(1.4, 2.4, 6), CFrame.new(40, 3, 40))
+part(bikeModel, "FrontWheel", Vector3.new(0.8, 3, 3), CFrame.new(40, 1.5, 36.5))
+part(bikeModel, "BackTire", Vector3.new(0.8, 3, 3), CFrame.new(40, 1.5, 43.5))
+local s3 = Instance.new("Script")
+s3.Parent = bikeModel
+bikeModel.Parent = folderPath(root, "Motorcycle/Body")
+
 ---------------------------------------------------------------------------
 local assets = AssetLibrary.new(root)
 print("summary: " .. table.concat(assets.summary, ", "))
@@ -223,6 +233,40 @@ for _, d in body:GetDescendants() do
 	end
 end
 check(tyreWelded, "model tyres welded to the suspension rig")
+
+---------------------------------------------------------------------------
+-- the motorcycle takes its body; the rider stays
+local bike = Car.new(Config, Color3.new(0, 1, 0), assets, "Motorcycle")
+local bikeBody = bike.bikeParts:FindFirstChild("BikeBody")
+check(bikeBody ~= nil, "bike body attached")
+for _, d in bike.model:GetDescendants() do
+	check(not d:IsA("LuaSourceContainer"), "bike kept a " .. d.ClassName)
+end
+-- scaled 10 -> 8 long: wheels at z = +-3.5 * 0.8 = 2.8
+print(string.format("bike wheels at z=%.2f / %.2f", bike.frontWheel.z, bike.rearWheel.z))
+check(math.abs(bike.frontWheel.z + 2.8) < 0.1 and math.abs(bike.rearWheel.z - 2.8) < 0.1, "bike wheel positions taken from the model")
+local frontWelded = false
+for _, d in bikeBody:GetDescendants() do
+	if d:IsA("WeldConstraint") and d.Part0 == bike.frontWheel.part and d.Part1.Name == "FrontWheel" then
+		frontWelded = true
+	end
+end
+check(frontWelded, "bike front wheel welded to the steering rig")
+local riderVisible, oldBikeHidden = false, true
+for _, d in bike.bikeParts:GetDescendants() do
+	if d:IsA("BasePart") and not d:IsDescendantOf(bikeBody) then
+		if d:GetAttribute("IR_Rider") then
+			riderVisible = riderVisible or d.Transparency < 1
+		elseif d.Name == "Tank" or d.Name == "Seat" then
+			oldBikeHidden = oldBikeHidden and d.Transparency == 1
+		end
+	end
+end
+check(riderVisible, "rider still visible on the premade bike")
+check(oldBikeHidden, "procedural bike hidden")
+bike.speed = 50
+bike.chassis.AssemblyAngularVelocity = Vector3.zero
+bike:render(1 / 60)
 
 if failures == 0 then
 	print("ALL ASSET CHECKS PASSED")

@@ -1,9 +1,10 @@
 --[[
 	Atmosphere
 	----------
-	Lighting, sky, clouds, water and terrain colours, plus a slow day/night
-	cycle. Runs on the client, so every player can have their own time of
-	day.
+	One-time lighting, sky and water setup, plus the day/night clock. Runs
+	on the client, so every player can have their own time of day. The
+	per-frame look (clouds, fog, grading, sun rays) is driven by Weather,
+	terrain colours by Seasons.
 ]]
 
 local Lighting = game:GetService("Lighting")
@@ -12,22 +13,6 @@ local Workspace = game:GetService("Workspace")
 local Atmosphere = {}
 
 local rgb = Color3.fromRGB
-
-local MATERIAL_COLORS = {
-	[Enum.Material.Grass] = rgb(104, 142, 66),
-	[Enum.Material.LeafyGrass] = rgb(78, 118, 52),
-	[Enum.Material.Ground] = rgb(122, 98, 72),
-	[Enum.Material.Mud] = rgb(86, 72, 58),
-	[Enum.Material.Rock] = rgb(122, 118, 112),
-	[Enum.Material.Slate] = rgb(96, 96, 100),
-	[Enum.Material.Basalt] = rgb(56, 54, 56),
-	[Enum.Material.Sand] = rgb(218, 200, 152),
-	[Enum.Material.Sandstone] = rgb(178, 94, 58),
-	[Enum.Material.Limestone] = rgb(208, 150, 98),
-	[Enum.Material.Salt] = rgb(226, 196, 158),
-	[Enum.Material.Snow] = rgb(240, 244, 250),
-	[Enum.Material.Asphalt] = rgb(60, 62, 66),
-}
 
 -- time of day presets cycled with T
 Atmosphere.Presets = { 7.2, 11.5, 15.2, 18.1, 21.5 }
@@ -89,11 +74,6 @@ function Atmosphere.apply(config)
 	terrain.WaterTransparency = 0.45
 	terrain.WaterWaveSize = 0.18
 	terrain.WaterWaveSpeed = 10
-	for material, color in MATERIAL_COLORS do
-		pcall(function()
-			terrain:SetMaterialColor(material, color)
-		end)
-	end
 	pcall(function()
 		terrain.Decoration = true -- animated grass blades
 	end)
@@ -103,16 +83,14 @@ function Atmosphere.apply(config)
 	clouds.Color = rgb(250, 250, 252)
 end
 
+Atmosphere.clockRunning = true
+
 -- Advance the clock (call every frame).
 function Atmosphere.step(dt: number, config)
 	local minutes = config.Sky.DayLengthMinutes
-	if minutes and minutes > 0 then
+	if Atmosphere.clockRunning and minutes and minutes > 0 then
 		Lighting.ClockTime = (Lighting.ClockTime + dt * 24 / (minutes * 60)) % 24
 	end
-	-- a touch more ambient at night so the road stays readable
-	local c = Lighting.ClockTime
-	local night = c < 6 or c > 18.5
-	Lighting.OutdoorAmbient = night and rgb(70, 78, 98) or rgb(128, 132, 140)
 end
 
 -- Jump to the next preset time of day.

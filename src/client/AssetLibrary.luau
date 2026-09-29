@@ -13,7 +13,7 @@
 	    Signs/Tunnel  Signs/SpeedLimit  Signs/FallingRocks  Signs/Deer
 	    Signs/Guide  Signs/Marker
 	    Road/GuardRail  Road/Delineator  Road/RoadEnd
-	    Car/Body
+	    Car/Body  Motorcycle/Body
 
 	Several models in one folder become random variants. Empty folders keep
 	using the built-in procedural version.
@@ -97,9 +97,14 @@ end
 
 -- World-axis bounds of the visible parts of a model.
 function AssetLibrary.bounds(model: Instance): (Vector3, Vector3)
+	return AssetLibrary.boundsOf(model:GetDescendants())
+end
+
+-- World-axis bounds of the visible parts in a list of instances.
+function AssetLibrary.boundsOf(list): (Vector3, Vector3)
 	local lx, ly, lz, hx, hy, hz = huge, huge, huge, -huge, -huge, -huge
 	local any = false
-	for _, p in model:GetDescendants() do
+	for _, p in list do
 		if p:IsA("BasePart") and p.Transparency < 0.99 then
 			any = true
 			local cf, s = p.CFrame, p.Size * 0.5
@@ -214,14 +219,16 @@ function AssetLibrary.new(root: Instance?)
 	if rail then
 		self:_loadRail(rail)
 	end
-	local car = findFolder(root, "Car/Body")
-	if car then
-		for _, child in car:GetChildren() do
-			if child:IsA("Model") or child:IsA("BasePart") then
-				self.carSource = child
-				self.carFolder = car
-				table.insert(self.summary, "Car/Body")
-				break
+	for _, slot in { { "Car/Body", "car" }, { "Motorcycle/Body", "bike" } } do
+		local f = findFolder(root, slot[1])
+		if f then
+			for _, child in f:GetChildren() do
+				if child:IsA("Model") or child:IsA("BasePart") then
+					self[slot[2] .. "Source"] = child
+					self[slot[2] .. "Folder"] = f
+					table.insert(self.summary, slot[1])
+					break
+				end
 			end
 		end
 	end

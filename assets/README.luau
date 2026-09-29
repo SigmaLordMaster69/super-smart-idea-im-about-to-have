@@ -12,7 +12,7 @@
 	  Signs/CurveLeft  CurveRight  ChevronLeft  ChevronRight  Tunnel
 	        SpeedLimit  FallingRocks  Deer  Guide  Marker
 	  Road/GuardRail  Delineator  RoadEnd
-	  Car/Body
+	  Car/Body  Motorcycle/Body
 
 	What happens to each model:
 	  * scripts, sounds, seats, humanoids, welds and constraints are removed

@@ -76,6 +76,16 @@ function Hud.new(seed: number)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Text = "0.0 km",
 	})
+	self.info = label(root, {
+		Name = "Info",
+		Position = UDim2.fromOffset(28, 48),
+		Size = UDim2.fromOffset(400, 18),
+		TextSize = 14,
+		Font = FONT_LIGHT,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTransparency = 0.25,
+		Text = "",
+	})
 	self.region = label(root, {
 		Name = "Region",
 		AnchorPoint = Vector2.new(0.5, 0),
@@ -119,7 +129,7 @@ function Hud.new(seed: number)
 		TextYAlignment = Enum.TextYAlignment.Bottom,
 		TextTransparency = 0.25,
 		Visible = not touch,
-		Text = "W/S drive   A/D steer   Space handbrake   F autodrive   C camera   R reset   T time of day   H hide HUD   F3 stats   Right-drag look",
+		Text = "W/S drive   A/D steer   Space handbrake   F autodrive   C camera   V car/bike   N season   G weather   T time   M menu   R reset   H hide HUD   F3 stats",
 	})
 	self.toast = label(root, {
 		Name = "Toast",
@@ -133,8 +143,8 @@ function Hud.new(seed: number)
 	})
 	self.stats = label(gui, {
 		Name = "Stats",
-		Position = UDim2.fromOffset(28, 52),
-		Size = UDim2.fromOffset(620, 80),
+		Position = UDim2.fromOffset(28, 72),
+		Size = UDim2.fromOffset(720, 100),
 		TextSize = 14,
 		Font = Enum.Font.Code,
 		TextXAlignment = Enum.TextXAlignment.Left,
@@ -220,9 +230,23 @@ function Hud:setVisible(on: boolean)
 end
 
 function Hud:update(speed: number, distanceStuds: number)
-	-- 1 stud ~ 0.28 m, so studs/s ~ km/h
-	self.speed.Text = tostring(math.floor(math.abs(speed) * 1.008 + 0.5))
-	self.distance.Text = string.format("%.1f km", distanceStuds * 0.00028)
+	-- 1 stud ~ 0.28 m, so studs/s ~ km/h. Only touch the labels when the
+	-- text changes (setting Text re-lays out the label).
+	local sp = tostring(math.floor(math.abs(speed) * 1.008 + 0.5))
+	if sp ~= self.speed.Text then
+		self.speed.Text = sp
+	end
+	local dist = string.format("%.1f km", distanceStuds * 0.00028)
+	if dist ~= self.distance.Text then
+		self.distance.Text = dist
+	end
+end
+
+-- Small line under the distance (season, weather, time).
+function Hud:setInfo(text: string)
+	if self.info.Text ~= text then
+		self.info.Text = text
+	end
 end
 
 -- Debug overlay text; nil hides it.

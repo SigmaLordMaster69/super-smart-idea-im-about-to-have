@@ -11,7 +11,16 @@ A [slowroads.io](https://slowroads.io)-style endless driving game for Roblox. On
 - **Trees and plants** matched to each region: pines, snowy pines, oaks, birches, wind-swept coastal cypresses, cacti, bushes, dry shrubs, flowers and rocks
 - **Road furniture**: guard rails wherever the road drops away or runs along water, bridge parapets, lit tunnels with portals, delineator posts, and signs (curve warnings, chevrons around sharp bends, tunnel ahead, speed limits, falling rocks, deer crossings, km markers, and green "Entering ..." signs for every region)
 
-It also includes a drivable car, a slowroads-style **autodrive**, chase, hood and **cinematic roadside** cameras, a day/night cycle, and a "km driven" leaderboard.
+On top of that:
+
+- **Four seasons**: spring blossom and drifting petals, green summer, autumn leaves falling from orange trees, and a snowy winter with bare trees, frozen lakes and rivers, and lower grip
+- **Weather**: clear, cloudy, rain, storm (lightning bolts, screen flash, delayed thunder), fog and snow. It blends smoothly, and in Auto mode it changes every few minutes with odds that suit the season
+- **Wet roads**: asphalt darkens and turns reflective in the rain, tyres throw up spray, grip drops, and the road dries out afterwards
+- **Sky**: dynamic clouds, sun rays, and colour grading that turns warm at sunrise and sunset and cool at night
+- **Car or motorcycle**: the bike leans into corners, and its rider is your own avatar
+- **Settings menu** (gear button): vehicle, season, weather, time of day, quality, camera
+
+It also includes a slowroads-style **autodrive**, chase, hood and **cinematic roadside** cameras, a day/night cycle, and a "km driven" leaderboard.
 
 | Coast: cliffs, beach, sea stacks, a headland tunnel (red) and river bridges (yellow) | Canyon, then coast | River valley: the river crosses under the road on bridges |
 |---|---|---|
@@ -63,7 +72,11 @@ If you copy the scripts into your own place instead:
 | Put the car back on the road | R | B | RESET |
 | Time of day | T | D-pad up | |
 | Hide HUD | H | D-pad down | |
-| Stats overlay (FPS, chunks, position) | F3 | | |
+| Car / motorcycle | V | D-pad left | menu |
+| Season (Auto, Spring, Summer, Autumn, Winter) | N | | menu |
+| Weather (Auto, Clear, Cloudy, Rain, Storm, Fog, Snow) | G | D-pad right | menu |
+| Settings menu | M or the ⚙ button | Select | ⚙ |
+| Stats overlay (FPS, chunks, workers, frame budget) | F3 | | |
 
 Pressing any drive key turns autodrive off. A car that flips or ends up in the water is put back on the road automatically.
 
@@ -85,12 +98,13 @@ Everything the game builds from parts can be replaced by premade models from the
    | `Road/GuardRail` | one straight guard rail segment, repeated along every rail | "guard rail", "highway barrier" |
    | `Road/Delineator`, `Road/RoadEnd` | roadside post, barrier | "road post", "road barrier" |
    | `Car/Body` | any car model, nose towards -Z | "car model", "low poly car" |
+   | `Motorcycle/Body` | any motorbike model, front towards -Z | "motorcycle", "motorbike" |
 
 3. Press Play. The Output window prints which slots were picked up.
 
 Each model is **cleaned** before use: scripts, sounds, seats, humanoids, welds and constraints are removed, so scripts inside free models never run. It is then anchored, pivoted at its base, and auto-scaled (trees 18–48 studs, plants, rocks; signs only if way off).
 
-A car body is scaled to 15 studs and welded onto the physics chassis. Parts named *wheel/tire/tyre/rim* are found and attached to the suspension, so they spin and steer, and the collision box resizes to fit the body.
+A car body is scaled to 15 studs and welded onto the physics chassis. Parts named *wheel/tire/tyre/rim* are found and attached to the suspension, so they spin and steer, and the collision box resizes to fit the body. A motorcycle body is scaled to 8 studs. Its front and rear wheel parts spin (the front one also steers), the whole bike leans, and the rider stays on top.
 
 Empty slots keep the built-in version. You can tweak individual models with attributes, set on the model or on its slot folder:
 
@@ -104,7 +118,14 @@ Empty slots keep the built-in version. You can tweak individual models with attr
 
 Terrain textures come from Roblox materials, so a `MaterialVariant` pack in **MaterialService** (e.g. realistic grass, rock or sand) restyles the whole world too.
 
-**Sounds:** paste audio ids from the Toolbox into `Config.Sounds` (`Engine`, `Wind`, `Ambience`). The engine pitch and wind volume follow your speed.
+**Sounds:** paste audio ids from the Toolbox into `Config.Sounds`:
+- `Engine`, `MotorcycleEngine`: the pitch follows your speed.
+- `Wind`: the volume follows your speed.
+- `Rain`: the volume follows the rain, and it is muffled in tunnels.
+- `Thunder`: plays after each lightning strike, delayed by its distance.
+- `Ambience`: background loop.
+
+**Particle textures:** rain, snow and leaves use built-in engine textures. Paste your own image ids into `Config.Textures` for nicer raindrops or leaf shapes.
 
 ---
 
@@ -128,15 +149,25 @@ Every client generates its own copy of the world from a **shared seed** that the
 - **Crossings** are landforms laid across the road at an angle: *ridges* force tunnels, and *rivers* and *gorges* force bridges.
 - Then the road corridor is applied: cuts and embankments with slopes that suit the material, tunnel voids with an arched profile (plus cut-and-cover where the rock is thin), and natural ground left under bridges.
 
-### Streaming (`src/client/ChunkManager.luau`)
-- The world is built in 128×128-stud chunks around a point just ahead of the car. Each chunk gets voxel terrain, road parts and decoration.
-- All work runs in one coroutine with a per-frame time budget (7 ms while driving), so it never causes a big frame spike.
-- Trees switch between a one-part far version and a full near version. Placement is seeded per cell, so nothing moves when a chunk changes detail.
-- Terrain columns more than 300 studs from the road are interpolated from an 8-stud grid, which is about 3.5× faster. Near the road everything is sampled exactly.
+### Streaming and performance (`ChunkManager.luau`, `WorkerPool.luau`, `GenWorker/`)
+- The world is built in 128×128-stud chunks around a point just ahead of the car. Each chunk gets voxel terrain, road parts and decoration. Chunks ahead of the car are loaded before those beside and behind it.
+- **Parallel terrain:** sampling the height model is the expensive part. It runs on 2–4 `GenWorker` Actors (Parallel Luau), so it uses other CPU cores. Each worker samples in short parallel slices, then writes its voxels in the serial phase. If the workers fail to start, time out or keep erroring, the game quietly falls back to building on the main thread.
+- The rest of the work runs in one coroutine with an **adaptive frame budget**. The budget shrinks when the frame rate drops below about 50 FPS and grows while there is work queued and the game runs smoothly, so generation never causes a big frame spike.
+- Terrain is sampled on nested 16/8/4-stud lattices aligned to the world grid. Columns far from the road are interpolated, while columns near the road are sampled exactly. Voxels are written in four small quadrant pieces per chunk, reusing row tables to save memory churn. The hot modules are compiled with `--!native`. Together, a chunk now takes about 40% less time to build than before.
+- Trees switch between a one-part far version and a full near version, with a little hysteresis so chunks on the boundary don't flip back and forth. Placement is seeded per cell, so nothing moves when a chunk changes detail.
+- **Quality presets** (`Low`, `Medium`, `High`, `Ultra`, or `Auto`) set the view distance, tree density, tree shadows, the number of workers and the frame budget limits. Auto picks `Low` on touch devices, and otherwise follows the Roblox graphics quality slider.
 - **Floating origin:** once the car is 16k studs from the Roblox origin, the world is recentred. Terrain is copied to its new place over a few frames (out of sight), then every part, the car and the camera shift in a single frame. That keeps physics precise however far you drive.
 
-### The car (`Car.luau`)
+### Weather and seasons (`Weather.luau`, `Seasons.luau`, `Environment.luau`)
+- `Weather` blends the clouds, atmosphere, brightness, sun rays and colour grading between presets, then grades the result by time of day. Rain and snow come from an emitter that follows the camera and switches off under a roof (tunnels, bridge undersides). Storms throw lightning bolts made of neon segments, with a flash and thunder delayed by distance.
+- Road wetness builds up during rain and dries out slowly afterwards. Asphalt parts (tagged `IR_Asphalt`) are recoloured in batches of 500 per frame, so a change of weather never hitches.
+- `Seasons` sets the terrain colours and flags for the terrain builder (snow on flat ground, frozen water above sea level, a lower snow line), plus tree styles and grip. When the season changes, the loaded chunks are rebuilt in the background, nearest first, and the decoration is redone.
+- `Environment` runs the Auto modes. By default the seasons roll every 10 minutes, and the weather changes every 2–4 minutes, weighted by the season. Rain turns to snow in winter.
+
+### The car (`Car.luau`, `Motorcycle.luau`)
 A raycast-suspension car. Each wheel casts a ray, and a spring/damper plus tyre friction are applied through a VectorForce. Grip is limited by a friction circle, steering lock shrinks with speed, the handbrake lets the rear slide, the car holds itself on hills when stopped, and there are headlights (at night) and brake lights. Autodrive steers with pure pursuit and slows for bends ahead based on their curvature.
+
+The motorcycle uses the same physics with a narrow footprint and its own tuning (`Config.Motorcycle`). Its four ray corners act like invisible outriggers, so it can't fall over. What you see hangs off a "lean root" that tilts into corners by `atan(speed × yaw rate / g)` around the tyre contact line. The rider is a posed clone of your R15 avatar, or a helmeted blocky rider if that isn't possible. Tyre grip follows the season and the road wetness.
 
 ### Project layout
 ```
@@ -154,9 +185,13 @@ src/client/     StarterPlayerScripts.InfiniteRoadClient
   RoadBuilder.luau     road, markings, rails, bridges, tunnels, signs
   Decorator.luau       vegetation placement
   Props.luau           procedural trees, rocks, signs (no assets needed)
-  Car.luau, AutoDrive.luau, CameraController.luau, Input.luau, Hud.luau, Atmosphere.luau
-src/server/     ServerScriptService.InfiniteRoadServer (seed + leaderboard)
+  WorkerPool.luau      dispatches terrain jobs to the GenWorker actors
+  GenWorker/           Actor + Worker script (parallel terrain sampling)
+  Weather.luau, Seasons.luau, Environment.luau   weather, seasons, auto modes
+  Car.luau, Motorcycle.luau, AutoDrive.luau, CameraController.luau
+  Input.luau, Hud.luau, SettingsMenu.luau, Quality.luau, Atmosphere.luau
   AssetLibrary.luau    premade model slots (asset packs)
+src/server/     ServerScriptService.InfiniteRoadServer (seed + leaderboard)
 assets/         README shown inside ReplicatedStorage.InfiniteRoadAssets
 tools/          offline tests and preview renderers (Lune + Python)
 ```
@@ -173,8 +208,10 @@ Everything lives in `src/shared/Config.luau`. The most useful settings:
 | `Tunnel.CoverThreshold`, `Bridge.GapThreshold` | when a cut becomes a tunnel, and when an embankment becomes a bridge |
 | `Regions.*.Weight` / `Length` | how often each region appears and how long it lasts |
 | `Decor.Density` | trees per region |
-| `World.TerrainRadius`, `FrameBudget` | view distance and how much time per frame generation may use (lower both for weaker devices) |
-| `Car.*` | top speed, acceleration, grip, suspension |
+| `Quality.Default` and the presets | `Auto` or a preset name. Each preset sets view distance, tree density and shadows, parallel workers (0 turns them off) and the frame budget range |
+| `Car.*`, `Motorcycle.*` | top speed, acceleration, grip, suspension; `Motorcycle.LeanMax` caps the lean angle |
+| `Weather.Start`, `Seasons.Start` | `Auto`, or lock one weather / season |
+| `Weather.MinDuration`/`MaxDuration`, `Seasons.CycleMinutes` | how often the weather and the season change in Auto mode |
 | `Sky.DayLengthMinutes` | 0 freezes time |
 
 ## Offline tests
@@ -185,7 +222,9 @@ The generator and the chunk builders are tested outside Roblox with [Lune](https
 lune run tools/check_syntax                 # every source file compiles; the place file has the right hierarchy and settings
 lune run tools/test_road [seed] [studs]     # road invariants: monotonic X, min radius, max grade, flags, determinism, projection
 lune run tools/test_chunks [seed]           # full chunk pipeline: voxels, road, tunnels, bridges, decoration, rebase
-lune run tools/test_assets                  # fake asset packs: cleaning, scaling, placement, guard rails, car body + wheels
+lune run tools/test_assets                  # fake asset packs: cleaning, scaling, placement, guard rails, car + bike bodies and wheels
+lune run tools/test_scenic [seed]           # seasons (snow, ice, tree styles), weather/environment, motorcycle, parallel worker path
+lune run tools/bench                        # terrain build time per chunk
 lune run tools/curve_stats [seed]           # curve radius distribution
 lune run tools/list_sections [seed]         # region sequence
 
@@ -195,7 +234,9 @@ lune run tools/render_view 12345 3000 view.bin && python3 tools/render_view.py v
 ```
 
 ## Limitations and notes
-- **Not yet playtested in Roblox Studio.** The generator, chunk building and every instance/property it creates run in the offline tests above. Things only the engine can show (how the car handles, camera feel, lighting, how smooth terrain meshes the voxels, frame rate on real devices) still need a playtest, and the car numbers in `Config.Car` will probably need tuning.
+- **Not yet playtested in Roblox Studio.** The generator, chunk building and every instance/property it creates run in the offline tests above. Things only the engine can show still need a playtest: how the car and bike handle, camera feel, lighting and weather looks, how smooth terrain meshes the voxels, and frame rate on real devices. The numbers in `Config.Car` and `Config.Motorcycle` will probably need tuning.
+- The parallel workers can't run outside Roblox. The offline tests cover the same path with a fake worker pool that answers asynchronously. If the Actors don't work in your place, the Output window says so and generation continues on the main thread.
+- The sound ids in `Config.Sounds` are empty by default (silence). Add your own from the Toolbox.
 - Players on the same server share a seed but don't see each other, because each world is local to its player.
 - The road starts at a "ROAD ENDS" barrier behind the spawn point. It's infinite forwards only.
-- Generation runs on the client. On weak phones, lower `World.TerrainRadius` (for example to 600) and `World.FarDecorRadius`.
+- Generation runs on the client. On weak devices, pick the `Low` quality preset (the menu, or `Config.Quality.Default`).

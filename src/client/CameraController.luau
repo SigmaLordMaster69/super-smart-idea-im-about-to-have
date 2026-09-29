@@ -104,9 +104,11 @@ function CameraController:update(dt: number, car)
 		self:_orbit(-self._stick.X * dt * 2.2, -self._stick.Y * dt * 1.5)
 	end
 
+	local bike = car.kind == "Motorcycle"
 	local mode = self:mode()
 	if mode == "Hood" then
-		local target = cf * CFrame.new(0, 2.7, -2.2)
+		-- on the bike: the rider's eyes, leaning with the bike
+		local target = bike and car.leanRoot and car.leanRoot.CFrame * CFrame.new(0, (car.seatTop or 0) + 3.1, 0.2) or cf * CFrame.new(0, 2.7, -2.2)
 		if self.pos then
 			target = cam.CFrame:Lerp(target, 1 - exp(-25 * dt))
 		end
@@ -133,8 +135,8 @@ function CameraController:update(dt: number, car)
 		self.pitch += (rad(12) - self.pitch) * (1 - exp(-2.5 * dt))
 	end
 	local heading = CFrame.Angles(0, self.yaw, 0):VectorToWorldSpace(self.heading)
-	local dist = (17 + speed * 0.035) * self.zoom
-	local focus = carPos + Vector3.new(0, 3, 0)
+	local dist = ((bike and 12 or 17) + speed * 0.035) * self.zoom
+	local focus = carPos + Vector3.new(0, bike and 2.4 or 3, 0)
 	local desired = focus - heading * dist * math.cos(self.pitch) + Vector3.new(0, dist * math.sin(self.pitch) + 1.5, 0)
 
 	if not self.pos then

@@ -135,6 +135,14 @@
           },
           "$className": "Folder",
           "$ignoreUnknownInstances": true
+        },
+        "Motorcycle": {
+          "$className": "Folder",
+          "$ignoreUnknownInstances": true,
+          "Body": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          }
         }
       }
     },

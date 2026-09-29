@@ -257,6 +257,17 @@ roblox.implementMethod("Workspace", "BulkMoveTo", function(_, parts, cframes)
 end)
 
 local dataModel = roblox.Instance.new("DataModel")
+-- properties the engine would give defaults to
+dataModel:GetService("Lighting").ClockTime = 14
+roblox.implementMethod("CollectionService", "GetTagged", function(_, tag)
+	local out = {}
+	for _, d in dataModel:GetDescendants() do
+		if d:HasTag(tag) then
+			table.insert(out, d)
+		end
+	end
+	return out
+end)
 local replicatedStorageProxy = {
 	WaitForChild = function(_, name)
 		assert(name == "InfiniteRoad", "unexpected WaitForChild " .. tostring(name))
@@ -320,6 +331,8 @@ baseEnv = {
 	ColorSequence = roblox.ColorSequence,
 	ColorSequenceKeypoint = roblox.ColorSequenceKeypoint,
 	NumberSequence = roblox.NumberSequence,
+	NumberSequenceKeypoint = roblox.NumberSequenceKeypoint,
+	Rect = roblox.Rect,
 	NumberRange = roblox.NumberRange,
 	Region3 = roblox.Region3,
 	Region3int16 = roblox.Region3int16,

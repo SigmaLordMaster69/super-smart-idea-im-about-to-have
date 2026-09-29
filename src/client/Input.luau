@@ -6,6 +6,7 @@
 
 	Keyboard: W/S or arrows drive, A/D or arrows steer, Space handbrake,
 	          F autodrive, C camera, R reset car, T time of day, H hide HUD,
+	          V car/motorcycle, N season, G weather, M settings menu,
 	          F3 stats overlay.
 	Gamepad:  RT/LT throttle/brake, left stick steer, A handbrake,
 	          X autodrive, Y camera, B reset.
@@ -43,6 +44,14 @@ function Input.new()
 			self:_fire("hud")
 		elseif kc == K.F3 then
 			self:_fire("stats")
+		elseif kc == K.V or kc == K.DPadLeft then
+			self:_fire("vehicle")
+		elseif kc == K.N then
+			self:_fire("season")
+		elseif kc == K.G or kc == K.DPadRight then
+			self:_fire("weather")
+		elseif kc == K.M or kc == K.ButtonSelect then
+			self:_fire("menu")
 		end
 	end)
 

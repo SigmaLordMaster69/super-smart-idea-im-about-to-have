@@ -5,15 +5,17 @@
 	world locally (same seed for everyone on the server), which keeps the
 	server idle and lets each client move its floating origin on its own.
 
-	Flow: wait for the seed, build the area around the spawn behind a
-	loading screen, drop the car on the road, then keep streaming chunks
-	around the car every frame.
+	Flow: wait for the seed, pick a quality preset, start the parallel
+	terrain workers, build the area around the spawn behind a loading
+	screen, drop the vehicle on the road, then keep streaming chunks around
+	it every frame while the Environment runs seasons and weather.
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
+local Lighting = game:GetService("Lighting")
 
 local Shared = ReplicatedStorage:WaitForChild("InfiniteRoad")
 local Config = require(Shared.Config)
@@ -27,6 +29,10 @@ local Input = require(script.Input)
 local Hud = require(script.Hud)
 local Atmosphere = require(script.Atmosphere)
 local AssetLibrary = require(script.AssetLibrary)
+local Quality = require(script.Quality)
+local WorkerPool = require(script.WorkerPool)
+local Environment = require(script.Environment)
+local SettingsMenu = require(script.SettingsMenu)
 
 local player = Players.LocalPlayer
 local rc = Config.Road
@@ -42,7 +48,7 @@ local SUBTITLES = {
 }
 
 ---------------------------------------------------------------------------
--- Seed and world
+-- Seed, quality and world
 ---------------------------------------------------------------------------
 local seed = Shared:GetAttribute("Seed")
 while seed == nil do
@@ -52,6 +58,9 @@ end
 
 local hud = Hud.new(seed)
 Atmosphere.apply(Config)
+
+local qualityMode = Config.Quality.Default
+local quality, qualityName = Quality.get(Config, qualityMode)
 
 local world = World.new(Config, seed)
 
@@ -63,7 +72,58 @@ else
 	print("[InfiniteRoad] no asset pack models found, using built-in props")
 end
 
-local manager = ChunkManager.new(world, Config, Workspace.Terrain, assets)
+-- season and weather (needs the effect folder in the workspace)
+local effects = Instance.new("Folder")
+effects.Name = "InfiniteRoadEffects"
+effects.Parent = Workspace
+local roofParams = RaycastParams.new()
+roofParams.FilterType = Enum.RaycastFilterType.Exclude
+roofParams.IgnoreWater = true
+local environment = Environment.new(Config, {
+	lighting = Lighting,
+	terrain = Workspace.Terrain,
+	parent = effects,
+	seed = seed,
+	raycast = function(origin, direction)
+		return Workspace:Raycast(origin, direction, roofParams)
+	end,
+})
+
+-- parallel terrain workers (optional, fall back to the main thread)
+local pool
+local template = script:FindFirstChild("GenWorker")
+local workers = quality.Workers or 0
+if workers > 0 and template and template:IsA("Actor") then
+	local ok, result = pcall(WorkerPool.new, template, workers, seed, script.TerrainBuilder, environment:seasonPreset().terrain, script)
+	if ok then
+		pool = result
+	else
+		warn("[InfiniteRoad] could not start terrain workers: " .. tostring(result))
+	end
+end
+
+local manager = ChunkManager.new(world, Config, Workspace.Terrain, assets, pool)
+
+local function applyQuality()
+	quality, qualityName = Quality.get(Config, qualityMode)
+	manager:setQuality(quality)
+	manager.decorator:setQuality(quality)
+	manager.props:setShadows(quality.TreeShadows)
+	environment.qualityScale = qualityName == "Low" and 0.45 or (qualityName == "Medium" and 0.7 or 1)
+end
+applyQuality()
+
+local function applySeason(name, preset)
+	manager.props:setSeason(name)
+	manager.decorator:setSeason(name)
+	manager:setSeason(preset.terrain)
+	manager:redecorate()
+end
+applySeason(environment.season, environment:seasonPreset())
+environment.onSeason = function(name, preset)
+	applySeason(name, preset)
+	hud:toast(name)
+end
 
 -- the car replaces the default character controls
 task.spawn(function()
@@ -78,19 +138,23 @@ end)
 
 ---------------------------------------------------------------------------
 -- Characters: each player drives in their own generated world, so avatars
--- are parked out of sight.
+-- are parked out of sight. (The motorcycle rider is a posed copy of the
+-- local avatar, so its original look is remembered.)
 ---------------------------------------------------------------------------
 local function hide(model: Model, anchor: boolean)
 	for _, d in model:GetDescendants() do
-		if d:IsA("BasePart") then
-			d.Transparency = 1
-			d.CanCollide = false
-			d.CanQuery = false
-			if anchor then
-				d.Anchored = true
+		if d:IsA("BasePart") or d:IsA("Decal") then
+			if d:GetAttribute("IR_Transparency") == nil then
+				d:SetAttribute("IR_Transparency", d.Transparency)
 			end
-		elseif d:IsA("Decal") then
 			d.Transparency = 1
+			if d:IsA("BasePart") then
+				d.CanCollide = false
+				d.CanQuery = false
+				if anchor then
+					d.Anchored = true
+				end
+			end
 		end
 	end
 end
@@ -132,10 +196,10 @@ manager:setFocus(spawnPos)
 local cam = Workspace.CurrentCamera
 cam.CameraType = Enum.CameraType.Scriptable
 
-local LOAD_RADIUS = 440
+local loadRadius = math.min(440, quality.TerrainRadius * 0.6)
 while true do
 	manager:update(Config.World.LoadingFrameBudget)
-	local progress = manager:progress(LOAD_RADIUS)
+	local progress = manager:progress(loadRadius)
 	hud:setProgress(progress)
 	local p = manager:toRoblox(spawnPos)
 	cam.CFrame = CFrame.lookAt(p + Vector3.new(-90, 70, 60), p)
@@ -146,10 +210,16 @@ while true do
 end
 
 ---------------------------------------------------------------------------
--- Car
+-- Vehicle
 ---------------------------------------------------------------------------
 local colorRng = Random.new(player.UserId + seed)
-local car = Car.new(Config, Config.Car.Colors[colorRng:NextInteger(1, #Config.Car.Colors)], assets)
+local vehicleKind = "Car"
+local function pickColor(kind)
+	local colors = kind == "Motorcycle" and Config.Motorcycle.Colors or Config.Car.Colors
+	return colors[colorRng:NextInteger(1, #colors)]
+end
+
+local car = Car.new(Config, pickColor(vehicleKind), assets, vehicleKind)
 car.model.Parent = Workspace
 
 -- Roblox-space CFrame in the driving lane at arc length s
@@ -160,10 +230,12 @@ local function laneCFrame(s: number): CFrame
 end
 
 car:teleport(laneCFrame(rc.SpawnDistance))
+roofParams.FilterDescendantsInstances = { car.model, effects }
 
 local autodrive = AutoDrive.new(world, Config)
 local camera = CameraController.new(Config, world, manager)
 local input = Input.new()
+local menu = SettingsMenu.new()
 
 local function carS(): number
 	local wp = manager:toWorld(car:getCFrame().Position)
@@ -174,36 +246,100 @@ local function resetCar()
 	car:teleport(laneCFrame(math.max(carS(), 40)))
 end
 
+local function switchVehicle()
+	vehicleKind = vehicleKind == "Car" and "Motorcycle" or "Car"
+	local cf, vel = car:getCFrame(), car:getVelocity()
+	local nextCar = Car.new(Config, pickColor(vehicleKind), assets, vehicleKind)
+	nextCar.model.Parent = Workspace
+	nextCar:teleport(cf + cf.UpVector * 0.5)
+	nextCar.chassis.AssemblyLinearVelocity = vel
+	car:destroy()
+	car = nextCar
+	roofParams.FilterDescendantsInstances = { car.model, effects }
+	hud:toast(vehicleKind)
+end
+
 manager.onRebase = function(delta: Vector3)
 	car:shift(delta)
 	camera:shift(delta)
 end
 
+local function timeLabel()
+	local t = Lighting.ClockTime
+	return string.format("%02d:%02d", math.floor(t), math.floor((t % 1) * 60))
+end
+
 local hudVisible = true
-input:on("autodrive", function()
-	autodrive:setEnabled(not autodrive.enabled)
-	hud:toast(autodrive.enabled and "Autodrive on" or "Autodrive off")
-end)
-input:on("camera", function()
-	hud:toast("Camera: " .. camera:cycle())
-end)
-input:on("reset", function()
-	resetCar()
-	hud:toast("Back on the road")
-end)
-input:on("time", function()
-	local t = Atmosphere.nextPreset()
-	hud:toast(string.format("Time %02d:%02d", math.floor(t), math.floor((t % 1) * 60)))
-end)
-input:on("hud", function()
-	hudVisible = not hudVisible
-	hud:setVisible(hudVisible)
-end)
 local statsVisible = false
-input:on("stats", function()
-	statsVisible = not statsVisible
-	hud:setStats(statsVisible and "" or nil)
+local actions = {
+	autodrive = function()
+		autodrive:setEnabled(not autodrive.enabled)
+		hud:toast(autodrive.enabled and "Autodrive on" or "Autodrive off")
+	end,
+	camera = function()
+		hud:toast("Camera: " .. camera:cycle())
+	end,
+	reset = function()
+		resetCar()
+		hud:toast("Back on the road")
+	end,
+	time = function()
+		Atmosphere.nextPreset()
+		hud:toast("Time " .. timeLabel())
+	end,
+	hud = function()
+		hudVisible = not hudVisible
+		hud:setVisible(hudVisible)
+	end,
+	stats = function()
+		statsVisible = not statsVisible
+		hud:setStats(statsVisible and "" or nil)
+	end,
+	vehicle = switchVehicle,
+	season = function()
+		hud:toast("Season: " .. environment:cycleSeason())
+	end,
+	weather = function()
+		hud:toast("Weather: " .. environment:cycleWeather())
+	end,
+	menu = function()
+		menu:toggle()
+	end,
+}
+for name, fn in actions do
+	input:on(name, fn)
+end
+
+menu:addRow("Vehicle", function()
+	return vehicleKind
+end, switchVehicle)
+menu:addRow("Season", function()
+	return environment.seasonAuto and ("Auto (" .. environment.season .. ")") or environment.season
+end, actions.season)
+menu:addRow("Weather", function()
+	return environment.weatherAuto and ("Auto (" .. environment.weather.name .. ")") or environment.weather.name
+end, actions.weather)
+menu:addRow("Time of day", timeLabel, actions.time)
+menu:addRow("Day cycle", function()
+	return Atmosphere.clockRunning and "On" or "Paused"
+end, function()
+	Atmosphere.clockRunning = not Atmosphere.clockRunning
 end)
+menu:addRow("Quality", function()
+	return qualityMode == "Auto" and ("Auto (" .. qualityName .. ")") or qualityMode
+end, function()
+	qualityMode = qualityMode == "Auto" and Config.Quality.Order[1] or (qualityMode == Config.Quality.Order[#Config.Quality.Order] and "Auto" or Quality.next(Config, qualityMode))
+	applyQuality()
+	manager:redecorate()
+end)
+menu:addRow("Camera", function()
+	return camera:mode()
+end, function()
+	camera:cycle()
+end)
+menu:addRow("Autodrive", function()
+	return autodrive.enabled and "On" or "Off"
+end, actions.autodrive)
 
 if Config.Sounds.Ambience ~= "" then
 	local ambience = Instance.new("Sound")
@@ -225,10 +361,7 @@ local function physicsStep(dt: number)
 			hud:toast("Autodrive off")
 		else
 			local cf = car:getCFrame()
-			local cc = Config.Car
-			local t = math.clamp(math.abs(car.speed) / cc.TopSpeed, 0, 1)
-			local maxSteer = cc.MaxSteerLow + (cc.MaxSteerHigh - cc.MaxSteerLow) * math.sqrt(t)
-			throttle, steer = autodrive:compute(manager:toWorld(cf.Position), cf.LookVector, cf.RightVector, car.speed, maxSteer)
+			throttle, steer = autodrive:compute(manager:toWorld(cf.Position), cf.LookVector, cf.RightVector, car.speed, car:maxSteer())
 			handbrake = false
 		end
 	end
@@ -245,7 +378,7 @@ if not ok then
 end
 
 RunService:BindToRenderStep("InfiniteRoadCamera", Enum.RenderPriority.Camera.Value + 1, function(dt)
-	car:render()
+	car:render(dt)
 	camera:update(dt, car)
 end)
 
@@ -256,12 +389,14 @@ local lastReport = os.clock()
 local currentSection = nil
 local upsideDown = 0
 local frames, lastStats = 0, os.clock()
+local infoTimer = 0
 
 RunService.Heartbeat:Connect(function(dt)
 	local cf = car:getCFrame()
+	local vel = car:getVelocity()
 	local worldPos = manager:toWorld(cf.Position)
-	manager:setFocus(worldPos + car:getVelocity() * Config.World.LookAhead)
-	manager:update(Config.World.FrameBudget)
+	manager:setFocus(worldPos + vel * Config.World.LookAhead, cf.LookVector)
+	manager:step(dt)
 
 	local p = cf.Position
 	if Vector2.new(p.X, p.Z).Magnitude > Config.World.RebaseDistance then
@@ -287,7 +422,7 @@ RunService.Heartbeat:Connect(function(dt)
 		hud:showRegion(sec.name, sub)
 	end
 
-	-- flipped over or fell into the water: put the car back
+	-- flipped over or fell into the water: put the vehicle back
 	if cf.UpVector.Y < 0.2 or p.Y < Config.SeaLevel - 25 then
 		upsideDown += dt
 		if upsideDown > 2.5 then
@@ -298,21 +433,35 @@ RunService.Heartbeat:Connect(function(dt)
 		upsideDown = 0
 	end
 
+	-- season and weather
 	Atmosphere.step(dt, Config)
+	environment:step(dt, Workspace.CurrentCamera.CFrame, vel)
+	car:setSurface(environment:gripScale(), environment:wetness())
+	manager.roadBuilder.wetness = environment:wetness()
+	infoTimer -= dt
+	if infoTimer <= 0 then
+		infoTimer = 1
+		hud:setInfo(string.format("%s  -  %s  -  %s", environment.season, environment.weather.name, timeLabel()))
+	end
 
 	frames += 1
 	if statsVisible and os.clock() - lastStats > 0.5 then
 		local fps = frames / (os.clock() - lastStats)
 		frames, lastStats = 0, os.clock()
 		local st = manager.stats
+		local k = math.floor(s / rc.SampleSpacing) + 1
 		hud:setStats(string.format(
-			"%d fps   generation %.1f ms/frame\nchunks %d loaded, %d waiting   built %d   rebases %d\ns = %.0f   world (%.0f, %.0f)   %s (%s)\nroad sample %d   %s%s   wheels on ground %d",
-			fps, manager.lastWork * 1000, manager:loadedCount(), manager:pendingCount(), st.built, st.rebases,
+			"%d fps   generation %.1f ms (budget %.1f)   quality %s\n"
+				.. "chunks %d loaded, %d waiting   built %d   refreshed %d   rebases %d\n"
+				.. "workers %s   parallel jobs %d\n"
+				.. "s = %.0f   world (%.0f, %.0f)   %s (%s)   %s%s\n"
+				.. "%s   wetness %.2f   grip x%.2f   wheels on ground %d",
+			fps, manager.lastWork * 1000, manager.budget * 1000, qualityName,
+			manager:loadedCount(), manager:pendingCount(), st.built, st.refreshed, st.rebases,
+			pool and (pool.broken and "off (fell back)" or tostring(pool.readyCount) .. " ready") or "none", st.parallel,
 			s, worldPos.X, worldPos.Z, sec.name, sec.type,
-			math.floor(s / rc.SampleSpacing) + 1,
-			world.road:isTunnel(math.floor(s / rc.SampleSpacing) + 1) and "tunnel " or "",
-			world.road:isBridge(math.floor(s / rc.SampleSpacing) + 1) and "bridge " or "",
-			car.grounded
+			world.road:isTunnel(k) and "tunnel " or "", world.road:isBridge(k) and "bridge " or "",
+			environment:label(), environment:wetness(), environment:gripScale(), car.grounded
 		))
 	elseif not statsVisible then
 		frames, lastStats = 0, os.clock()
