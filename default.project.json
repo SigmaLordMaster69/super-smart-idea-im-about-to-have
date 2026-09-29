@@ -1,0 +1,47 @@
+{
+  "name": "InfiniteScenicRoad",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "InfiniteRoad": {
+        "$path": "src/shared"
+      }
+    },
+    "ServerScriptService": {
+      "InfiniteRoadServer": {
+        "$path": "src/server"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "InfiniteRoadClient": {
+          "$path": "src/client"
+        }
+      }
+    },
+    "Lighting": {
+      "$properties": {
+        "Technology": "Future",
+        "ClockTime": 15.2
+      }
+    },
+    "Workspace": {
+      "$properties": {
+        "StreamingEnabled": false,
+        "Gravity": 196.2
+      },
+      "SpawnPlate": {
+        "$className": "SpawnLocation",
+        "$properties": {
+          "Anchored": true,
+          "CanCollide": true,
+          "Transparency": 1,
+          "Size": [16, 1, 16],
+          "Position": [0, 1500, 0],
+          "Neutral": true,
+          "Duration": 0
+        }
+      }
+    }
+  }
+}

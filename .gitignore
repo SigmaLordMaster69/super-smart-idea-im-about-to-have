@@ -1,0 +1,6 @@
+# offline tool output
+*.bin
+tools/scratch/
+# Studio lock/backup files
+*.rbxl.lock
+*.rbxlx.lock
