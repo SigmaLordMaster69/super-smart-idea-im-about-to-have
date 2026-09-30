@@ -5,8 +5,8 @@
 	  - parts hidden entirely inside other parts (wasted instances)
 	  - floating parts that touch nothing connected to the ground
 	  - sign text that runs off its board
-	  - part budgets: far trees <= 2, near trees <= 12, signs <= 8,
-	    small plants <= 6
+	  - part budgets: far conifers and cacti 1, other far trees <= 2,
+	    near trees <= 12, signs <= 8, small plants <= 6
 	  lune run tools/test_props [seed] [-v]
 ]]
 
@@ -36,6 +36,8 @@ local function fail(msg)
 end
 
 local LIMITS = { far = 2, tree = 12, sign = 8, plant = 6 }
+-- far trees are the most numerous; these are one part each
+local FAR_SINGLE = { pine = true, snowpine = true, cactus = true }
 local ZF_GAP = 0.01 -- faces closer than this z-fight
 local MIN_OVERLAP = 0.005 -- smaller shared patches (sq studs) stay under a pixel
 local TOUCH = 0.03 -- parts closer than this touch
@@ -728,6 +730,9 @@ for _, item in list do
 		stats.text += 1
 	end
 	local limit = LIMITS[item.category]
+	if item.category == "far" and FAR_SINGLE[item.kind] then
+		limit = 1
+	end
 	if limit and #parts > limit then
 		table.insert(problems, string.format("%d parts (limit %d)", #parts, limit))
 		stats.budget += 1
