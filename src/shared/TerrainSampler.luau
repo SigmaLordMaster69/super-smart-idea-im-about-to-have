@@ -60,6 +60,7 @@ Sampler.TypeIndex = {
 	Canyon = 5,
 	Lake = 6,
 	RiverValley = 7,
+	Ocean = 8,
 }
 local TYPE_INDEX = Sampler.TypeIndex
 
@@ -214,15 +215,20 @@ function Sampler:_lake(sec, x, z, s, d, ad, roadY)
 		if u < width then
 			local bowl = smoothstep(0, 70, u) * smoothstep(0, 140, width - u)
 			local h = L + 2 - (depth + 2) * bowl
-			-- little islands
-			local isl = n:u2(x / 170, z / 170, 55)
-			if isl > 0.8 and bowl > 0.3 then
-				h = max(h, L - 4 + 44 * smoothstep(0.8, 1, isl))
+			-- low, rounded islands with a sandy rim (the old ones were steep
+			-- flat-topped blocks)
+			local isl = n:u2(x / 210, z / 210, 55)
+			if isl > 0.68 and bowl > 0.25 then
+				local b = smoothstep(0.68, 1, isl)
+				local tall = 8 + 16 * n:u2(x / 700, z / 700, 58)
+				h = max(h, L - 6 + (tall + 6) * b * b * (0.9 + 0.1 * n:n2(x / 45, z / 45, 59)))
 			end
 			if h < L then
 				return h, HINT.Lakebed
+			elseif h < L + 2.5 then
+				return h, HINT.Beach
 			end
-			return h, HINT.Beach
+			return h, HINT.None
 		end
 		local far = u - width
 		local c = smoothstep(0, 320, far)
@@ -241,6 +247,62 @@ function Sampler:_lake(sec, x, z, s, d, ad, roadY)
 	local m = n:ridged2(x / 850, z / 850, 3, 58)
 	local f = n:fbm2(x / 380, z / 380, 3, 59)
 	return shelf + min((ad - hw) * 0.12, 30) + c * (90 * f + 80 * m), HINT.None
+end
+
+-- Ocean: open sea with low sandy keys. The road crosses on bridges and
+-- causeways and runs over the islands; each of these is laid out along the
+-- road (functions of s), so the road target can see them too.
+function Sampler:_oceanKey(s: number): number
+	return smoothstep(0.46, 0.64, self.noise:u1(s / 760, 201))
+end
+
+function Sampler:_oceanCauseway(s: number): number
+	return smoothstep(0.56, 0.7, self.noise:u1(s / 950, 202)) * (1 - self:_oceanKey(s))
+end
+
+-- a boat channel: the bridge rises over deeper water
+function Sampler:_oceanChannel(s: number): number
+	return smoothstep(0.7, 0.88, self.noise:u1(s / 1300, 203)) * (1 - self:_oceanKey(s)) * (1 - self:_oceanCauseway(s))
+end
+
+function Sampler:_ocean(x, z, s, ad)
+	local n = self.noise
+	local sea = self.sea
+	local hw = self.hw
+	local channel = self:_oceanChannel(s)
+	-- sand flats near the road, deeper water farther out
+	local depth = 4 + 12 * channel * (1 - smoothstep(40, 160, ad)) + 30 * smoothstep(60, 520, ad) + 5 * n:fbm2(x / 260, z / 260, 2, 204)
+	local h = sea - depth + 1.5 * n:n2(x / 70, z / 70, 205)
+	-- keys the road runs over
+	local key = self:_oceanKey(s)
+	if key > 0 then
+		local half = 110 + 130 * n:u1(s / 340, 206) + 55 * n:fbm2(x / 120, z / 120, 2, 207)
+		local isl = key * (1 - smoothstep(half * 0.45, half, ad))
+		if isl > 0 then
+			local top = sea + 3 + 4 * n:u2(x / 120, z / 120, 208)
+			h += (top - h) * smoothstep(0, 1, isl)
+		end
+	end
+	-- a low sand bank under the road between islands (the causeway itself
+	-- is the road embankment on top)
+	local cw = self:_oceanCauseway(s)
+	if cw > 0 then
+		local bank = sea + 1 - (1 - cw) * 12 - max(0, ad - hw - 6) * 0.25
+		h = max(h, bank)
+	end
+	-- islets away from the road
+	-- islets away from the road, in loose clusters, with ragged shores
+	local p = n:u2(x / 260, z / 260, 209) * (0.55 + 0.6 * n:u2(x / 1100, z / 1100, 211)) + 0.12 * n:n2(x / 60, z / 60, 212)
+	if p > 0.66 and ad > 110 then
+		local b = smoothstep(0.66, 0.95, p)
+		h = max(h, sea - 6 + (10 + 10 * n:u2(x / 500, z / 500, 210)) * b * b)
+	end
+	if h < sea - 0.5 then
+		return h, HINT.Seabed
+	elseif h < sea + 3.5 then
+		return h, HINT.Beach
+	end
+	return h, HINT.None
 end
 
 function Sampler:_riverValley(x, z, s, ad, E)
@@ -266,6 +328,8 @@ function Sampler:regionHeight(sec, x, z, s, d, ad, E, roadY)
 		return self:_coast(sec, x, z, s, d, ad, roadY)
 	elseif t == "Lake" then
 		return self:_lake(sec, x, z, s, d, ad, roadY)
+	elseif t == "Ocean" then
+		return self:_ocean(x, z, s, ad)
 	else
 		return self:_riverValley(x, z, s, ad, E)
 	end
@@ -285,6 +349,8 @@ function Sampler:_targetFor(sec, s, x, z, E)
 		return E
 	elseif t == "RiverValley" then
 		return E + 3
+	elseif t == "Ocean" then
+		return self.sea + 8 + 12 * self:_oceanChannel(s)
 	end
 	return (self:regionHeight(sec, x, z, s, 0, 0, E, 0))
 end

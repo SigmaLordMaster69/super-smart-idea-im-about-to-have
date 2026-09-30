@@ -93,6 +93,7 @@ Config.Regions = {
 	Canyon = { Weight = 1.0, Length = { 2800, 5200 }, Twist = 0.85 },
 	Lake = { Weight = 1.0, Length = { 2200, 3800 }, Twist = 0.8 },
 	RiverValley = { Weight = 1.0, Length = { 3000, 5200 }, Twist = 0.9 },
+	Ocean = { Weight = 1.0, Length = { 3200, 5600 }, Twist = 0.7 }, -- island hopping on bridges and causeways
 }
 Config.FirstRegion = "Meadow"
 Config.RegionTransition = 900 -- blend length between regions (studs)
@@ -163,6 +164,7 @@ Config.Decor = {
 		Canyon = 0.07,
 		Lake = 0.36,
 		RiverValley = 0.4,
+		Ocean = 0.3,
 	},
 	RoadClearance = 9, -- no trees within this distance of the road edge
 }
@@ -280,6 +282,9 @@ Config.Seasons = {
 Config.Sky = {
 	StartClockTime = 15.2,
 	DayLengthMinutes = 24, -- real minutes per in-game day, 0 freezes time
+	-- false: hide a custom Sky in the place (e.g. a city skybox from a
+	-- template) so the default sky, clouds and weather show
+	KeepPlaceSky = false,
 }
 
 -- Hide other players' avatars. Each player drives in their own

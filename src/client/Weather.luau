@@ -101,6 +101,14 @@ function Weather.new(config, deps)
 	self.applyTimer = 0
 
 	local lighting = self.lighting
+	if not (config.Sky and config.Sky.KeepPlaceSky) then
+		-- (only on this client; the place file keeps its Sky)
+		for _, sky in lighting:GetChildren() do
+			if sky:IsA("Sky") then
+				sky.Parent = nil
+			end
+		end
+	end
 	self.atmosphere = lighting:FindFirstChildOfClass("Atmosphere") or ensure("Atmosphere", lighting, "Atmosphere")
 	self.rays = lighting:FindFirstChildOfClass("SunRaysEffect") or ensure("SunRaysEffect", lighting, "SunRays")
 	self.grade = ensure("ColorCorrectionEffect", lighting, "WeatherGrade")

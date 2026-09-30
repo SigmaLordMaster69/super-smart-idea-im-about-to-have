@@ -37,6 +37,7 @@ TYPE_COLORS = {
     5: (190, 112, 70),  # canyon
     6: (86, 138, 72),  # lake
     7: (96, 146, 76),  # river valley
+    8: (110, 160, 80),  # ocean islands
 }
 img = np.zeros((H, W, 3), dtype=np.float64)
 for k, c in TYPE_COLORS.items():

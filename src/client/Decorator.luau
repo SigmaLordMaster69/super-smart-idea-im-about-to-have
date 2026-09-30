@@ -78,6 +78,7 @@ local TREES = {
 	Canyon = { { "cactus", 1 } },
 	Lake = { { "pine", 5 }, { "birch", 3 }, { "oak", 2 } },
 	RiverValley = { { "oak", 5 }, { "birch", 2.5 }, { "pine", 2.5 } },
+	Ocean = { { "palm", 1 } },
 }
 
 --[[
@@ -139,7 +140,8 @@ function Decorator:build(chunk, level: number, origin: Vector3, parent, yieldFn)
 			elseif typeName ~= "Canyon" then
 				density *= 0.25 + 1.3 * smoothstep(0.25, 0.7, clump)
 			end
-			if slope > 0.9 or hint == HINT.Beach or hint == HINT.CanyonWall then
+			-- (palms are fine on island beaches)
+			if slope > 0.9 or (hint == HINT.Beach and typeName ~= "Ocean") or hint == HINT.CanyonWall then
 				density = 0
 			elseif slope > 0.6 then
 				density *= 0.45
