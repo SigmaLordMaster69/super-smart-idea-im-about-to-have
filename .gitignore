@@ -4,3 +4,4 @@ tools/scratch/
 # Studio lock/backup files
 *.rbxl.lock
 *.rbxlx.lock
+.claude/worktrees/

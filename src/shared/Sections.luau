@@ -2,7 +2,7 @@
 	Sections
 	--------
 	The road is split into consecutive "sections", one region type each
-	(Meadow, Forest, Mountains, Coast, Canyon, Lake, RiverValley). Sections are
+	(Meadow, Forest, Mountains, Coast, Canyon, Lake, RiverValley, Ocean). Sections are
 	generated lazily from the seed, so the sequence is the same every time.
 
 	Neighbouring sections cross-fade over Config.RegionTransition studs, so at
@@ -23,7 +23,7 @@ local clamp = MathUtil.clamp
 local Sections = {}
 Sections.__index = Sections
 
-local TYPES = { "Meadow", "Forest", "Mountains", "Coast", "Canyon", "Lake", "RiverValley" }
+local TYPES = { "Meadow", "Forest", "Mountains", "Coast", "Canyon", "Lake", "RiverValley", "Ocean" }
 Sections.Types = TYPES
 
 -- No crossing reaches farther than this from where it meets the road.
@@ -58,6 +58,10 @@ local NAME_PARTS = {
 		{ "Trout", "Otter", "Willow", "Stone", "Rapid", "Kingfisher", "Alder", "Bear", "Salmon", "Heron" },
 		{ "River Valley", "River", "Creek", "Falls" },
 	},
+	Ocean = {
+		{ "Turquoise", "Pelican", "Conch", "Flamingo", "Seashell", "Marlin", "Coral", "Palm", "Starfish", "Sunrise", "Lagoon", "Manatee" },
+		{ "Keys", "Causeway", "Cays", "Islands", "Shoals", "Reef" },
+	},
 }
 
 local function makeName(rng, regionType: string): string
@@ -89,17 +93,26 @@ function Sections:regionalElevation(s: number): number
 	return t.BaseElevation + t.ElevationRange * clamp(self.noise:fbm1(s / 6500, 3, 41), -1, 1)
 end
 
+-- the open ocean fits best after the coast (the road comes down to the sea)
+local function weightOf(config, name: string, previous: string?): number
+	local w = config.Regions[name].Weight
+	if name == "Ocean" then
+		w *= previous == "Coast" and 2.5 or (previous == "Lake" and 1 or 0.35)
+	end
+	return w
+end
+
 local function pickType(rng, config, previous: string?, beforePrevious: string?): string
 	local total = 0
 	for _, name in TYPES do
 		if name ~= previous and name ~= beforePrevious then
-			total += config.Regions[name].Weight
+			total += weightOf(config, name, previous)
 		end
 	end
 	local roll = rng:NextNumber() * total
 	for _, name in TYPES do
 		if name ~= previous and name ~= beforePrevious then
-			roll -= config.Regions[name].Weight
+			roll -= weightOf(config, name, previous)
 			if roll <= 0 then
 				return name
 			end
@@ -118,6 +131,7 @@ local CROSSING_RULES = {
 	Coast = { { "ridge", 0.6 }, { "river", 0.55 } },
 	Canyon = { { "gorge", 0.7 } },
 	Lake = {},
+	Ocean = {},
 	RiverValley = {},
 }
 

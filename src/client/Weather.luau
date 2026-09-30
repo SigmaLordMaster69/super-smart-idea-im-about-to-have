@@ -17,6 +17,8 @@
 
 local CollectionService = game:GetService("CollectionService")
 
+local SoundUtil = require(script.Parent.SoundUtil)
+
 local Weather = {}
 Weather.__index = Weather
 
@@ -101,6 +103,14 @@ function Weather.new(config, deps)
 	self.applyTimer = 0
 
 	local lighting = self.lighting
+	if not (config.Sky and config.Sky.KeepPlaceSky) then
+		-- (only on this client; the place file keeps its Sky)
+		for _, sky in lighting:GetChildren() do
+			if sky:IsA("Sky") then
+				sky.Parent = nil
+			end
+		end
+	end
 	self.atmosphere = lighting:FindFirstChildOfClass("Atmosphere") or ensure("Atmosphere", lighting, "Atmosphere")
 	self.rays = lighting:FindFirstChildOfClass("SunRaysEffect") or ensure("SunRaysEffect", lighting, "SunRays")
 	self.grade = ensure("ColorCorrectionEffect", lighting, "WeatherGrade")
@@ -191,17 +201,11 @@ function Weather.new(config, deps)
 	self.petalEmitter = petals
 
 	local sounds = config.Sounds or {}
-	if sounds.Rain and sounds.Rain ~= "" then
-		local s = Instance.new("Sound")
-		s.Name = "RainLoop"
-		s.SoundId = sounds.Rain
-		s.Looped = true
-		s.Volume = 0
-		s.Parent = folder
-		s:Play()
-		self.rainSound = s
+	self.rainSound = SoundUtil.make(sounds.Rain, folder, 0, true)
+	if self.rainSound then
+		self.rainSound.Name = "RainLoop"
 	end
-	self.thunderId = sounds.Thunder
+	self.thunder = SoundUtil.id(sounds.Thunder) and sounds.Thunder or nil
 	return self
 end
 
@@ -288,17 +292,16 @@ function Weather:strike(camCF: CFrame)
 	task.delay(0.32, function()
 		folder:Destroy()
 	end)
-	if self.thunderId and self.thunderId ~= "" then
+	if self.thunder then
+		-- sound travels about 1225 studs a second (343 m/s at 0.28 m a stud)
 		task.delay(dist / 1225, function()
-			local s = Instance.new("Sound")
-			s.SoundId = self.thunderId
-			s.Volume = clamp(1.4 - dist / 1100, 0.3, 1)
-			s.PlaybackSpeed = self.rng:NextNumber(0.85, 1.05)
-			s.Parent = self.folder
-			s:Play()
-			task.delay(12, function()
-				s:Destroy()
-			end)
+			local s = SoundUtil.make(self.thunder, self.folder, clamp(1.4 - dist / 1100, 0.3, 1), false, self.rng)
+			if s then
+				s.PlaybackSpeed = self.rng:NextNumber(0.85, 1.05)
+				task.delay(14, function()
+					s:Destroy()
+				end)
+			end
 		end)
 	end
 end
@@ -396,7 +399,7 @@ function Weather:_effects(dt: number, camCF: CFrame, velocity: Vector3, ambient:
 	self.leafEmitter.Rate = ambient == "leaves" and 34 * quality * calm * open or 0
 	self.petalEmitter.Rate = ambient == "petals" and 18 * quality * calm * open or 0
 	if self.rainSound then
-		self.rainSound.Volume = cur.rain * 0.6 * (self.covered and 0.35 or 1)
+		SoundUtil.setVolume(self.rainSound, cur.rain * 0.6 * (self.covered and 0.35 or 1))
 	end
 
 	-- wet roads

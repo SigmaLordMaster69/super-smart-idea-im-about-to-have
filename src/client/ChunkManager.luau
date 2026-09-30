@@ -35,6 +35,7 @@ local TerrainBuilder = require(script.Parent.TerrainBuilder)
 local RoadBuilder = require(script.Parent.RoadBuilder)
 local Decorator = require(script.Parent.Decorator)
 local Props = require(script.Parent.Props)
+local Waterfalls = require(script.Parent.Waterfalls)
 
 local floor, sqrt, max, min, clamp = math.floor, math.sqrt, math.max, math.min, math.clamp
 
@@ -77,7 +78,7 @@ function ChunkManager.new(world, config, terrain, assets, pool)
 	self.budget = config.World.FrameBudget
 	self.avgDt = 1 / 60
 	self.onRebase = nil -- function(delta: Vector3)
-	self.stats = { built = 0, unloaded = 0, decorated = 0, rebases = 0, parallel = 0, refreshed = 0 }
+	self.stats = { built = 0, unloaded = 0, decorated = 0, rebases = 0, parallel = 0, refreshed = 0, waterfalls = 0 }
 	self:setQuality({
 		TerrainRadius = config.World.TerrainRadius,
 		NearDecorRadius = config.World.NearDecorRadius,
@@ -99,6 +100,7 @@ end
 -- Terrain season flags (snow ground, frozen water). Loaded chunks are
 -- rebuilt in the background, nearest first.
 function ChunkManager:setSeason(season)
+	self.frozen = season and season.frozen or false
 	self.terrainBuilder:setSeason(season)
 	if self.pool then
 		self.pool:setSeason(season)
@@ -386,6 +388,9 @@ function ChunkManager:_finish(result)
 		self:_buildRoad(rec)
 		self.stats.built += 1
 	else
+		if rec.road then
+			self:_buildFalls(rec)
+		end
 		self.stats.refreshed += 1
 	end
 end
@@ -400,7 +405,29 @@ function ChunkManager:_buildRoad(rec)
 	if not ok then
 		warn(string.format("[InfiniteRoad] road for chunk %d,%d failed: %s", rec.cx, rec.cz, tostring(err)))
 	end
+	self:_buildFalls(rec)
 	folder.Parent = self.container
+end
+
+-- Waterfalls (or icefalls in winter) where water runs off an edge.
+function ChunkManager:_buildFalls(rec)
+	if rec.falls then
+		rec.falls:Destroy()
+		rec.falls = nil
+	end
+	local folder = Instance.new("Folder")
+	folder.Name = "Falls"
+	local ok, count = pcall(Waterfalls.build, rec.data, self.world.sampler, self.origin, folder, self.frozen, self.config.Sounds)
+	if ok and count > 0 then
+		folder.Parent = rec.road
+		rec.falls = folder
+		self.stats.waterfalls += count
+	else
+		if not ok then
+			warn(string.format("[InfiniteRoad] waterfalls for chunk %d,%d failed: %s", rec.cx, rec.cz, tostring(count)))
+		end
+		folder:Destroy()
+	end
 end
 
 -- Terrain + road on this thread (no worker pool).
@@ -429,6 +456,9 @@ function ChunkManager:_refresh(rec)
 	end)
 	if ok and self.chunks[key(rec.cx, rec.cz)] == rec then
 		rec.data = data
+		if rec.road then
+			self:_buildFalls(rec)
+		end
 		self.stats.refreshed += 1
 	end
 end

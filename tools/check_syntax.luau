@@ -55,7 +55,9 @@ if fs.isFile("InfiniteScenicRoad.rbxl") then
 	need(worker and worker.ClassName == "Actor", "GenWorker must be an Actor")
 	local workerScript = worker and worker:FindFirstChild("Worker")
 	need(workerScript and workerScript.ClassName == "LocalScript", "GenWorker needs its Worker LocalScript")
-	for _, name in { "Weather", "Seasons", "Environment", "Motorcycle", "WorkerPool", "Quality", "SettingsMenu" } do
+	local ui = client and client:FindFirstChild("UI")
+	need(ui and ui:FindFirstChild("App") and ui:FindFirstChild("Kit"), "UI modules missing")
+	for _, name in { "Weather", "Seasons", "Environment", "Motorcycle", "WorkerPool", "Quality", "SettingsMenu", "Vehicles", "Waterfalls", "SoundUtil", "Ambience" } do
 		local m = client and client:FindFirstChild(name)
 		need(m and m.ClassName == "ModuleScript", name .. " module missing")
 	end

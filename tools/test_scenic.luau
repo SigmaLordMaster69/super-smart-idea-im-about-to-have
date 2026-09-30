@@ -453,6 +453,178 @@ for _ = 1, 400 do
 end
 check(manager.stats.built > builtBefore, "main-thread fallback keeps building")
 
+---------------------------------------------------------------------------
+-- 7. waterfalls where a river runs off an edge (seed 777 has some near
+-- s = 26600..29200)
+---------------------------------------------------------------------------
+local Waterfalls = env.require("src/client/Waterfalls")
+local fworld = World.new(Config, 777)
+local ftb = TerrainBuilder.new(fworld, Config, terrain)
+local fseen, fallCount, sheetCount, badSheets = {}, 0, 0, 0
+local fallFolder = Instance.new("Folder")
+for s = 26400, 29400, 96 do
+	local p = fworld.road:frameAt(s)
+	for _, off in { -1, 0, 1 } do
+		local cx, cz = math.floor(p.X / size), math.floor(p.Z / size) + off
+		local k = cx .. "," .. cz
+		if not fseen[k] then
+			fseen[k] = true
+			local job = ftb:compute(cx, cz, Vector3.zero)
+			ftb:release(job)
+			fallCount += Waterfalls.build(job.data, fworld.sampler, Vector3.zero, fallFolder, false, { Waterfall = "rbxassetid://1" })
+		end
+	end
+end
+for _, d in fallFolder:GetDescendants() do
+	if d:IsA("BasePart") and d.Name == "Sheet" then
+		sheetCount += 1
+		local c = d.CFrame.Position
+		local ground = fworld.sampler:groundAt(c.X, c.Z)
+		-- the sheet runs over the ground: never buried, never far above it
+		if c.Y < ground - 1.5 or c.Y > ground + 12 then
+			badSheets += 1
+		end
+	end
+end
+local foams, sprays, sounds = 0, 0, 0
+for _, d in fallFolder:GetDescendants() do
+	if d:IsA("ParticleEmitter") then
+		foams += d.Name == "Foam" and 1 or 0
+		sprays += d.Name == "Spray" and 1 or 0
+	elseif d:IsA("Sound") then
+		sounds += 1
+	end
+end
+print(string.format("waterfalls: %d falls, %d sheet parts (%d off the ground), %d foam, %d spray, %d sounds", fallCount, sheetCount, badSheets, foams, sprays, sounds))
+check(fallCount > 0, "waterfalls found where rivers run off edges")
+check(badSheets == 0, "waterfall sheets follow the ground")
+check(foams == fallCount and sprays == fallCount and sounds == fallCount, "every waterfall has foam, spray and sound")
+local iceFolder = Instance.new("Folder")
+local icy = 0
+for k in fseen do
+	local cx, cz = string.match(k, "(-?%d+),(-?%d+)")
+	local job = ftb:compute(tonumber(cx), tonumber(cz), Vector3.zero)
+	ftb:release(job)
+	icy += Waterfalls.build(job.data, fworld.sampler, Vector3.zero, iceFolder, true)
+end
+local iceEmitters, iceParts = 0, 0
+for _, d in iceFolder:GetDescendants() do
+	if d:IsA("ParticleEmitter") then
+		iceEmitters += 1
+	elseif d:IsA("BasePart") and d.Material == Enum.Material.Ice then
+		iceParts += 1
+	end
+end
+check(icy == fallCount and iceEmitters == 0 and iceParts > 0, "frozen waterfalls are still icefalls")
+
+---------------------------------------------------------------------------
+-- 8. ocean region: bridges and causeways between palm islands
+---------------------------------------------------------------------------
+local oworld = World.new(Config, 1811976718)
+local oroad = oworld.road
+local oSec
+for i = 1, 12 do
+	oworld.sections:ensure(i * 6000)
+	local sec = oworld.sections.list[i]
+	if sec and sec.type == "Ocean" then
+		oSec = sec
+		break
+	end
+end
+check(oSec ~= nil, "an ocean region on this seed")
+if oSec then
+	local k0, k1 = math.floor((oSec.startS + 500) / oroad.step), math.floor((oSec.endS - 500) / oroad.step)
+	oroad:ensureFlags(k1 + 2)
+	local bridges, dry, wetSides = 0, 0, 0
+	for k = k0, k1 do
+		if oroad:isBridge(k) then
+			bridges += 1
+		elseif not oroad:isTunnel(k) then
+			dry += 1
+			local p, _, r = oroad:frameAtIndex(k)
+			local _, wl = oworld.sampler:groundAt(p.X + r.X * 70, p.Z + r.Z * 70)
+			local _, wr = oworld.sampler:groundAt(p.X - r.X * 70, p.Z - r.Z * 70)
+			if wl > -math.huge and wr > -math.huge then
+				wetSides += 1
+			end
+		end
+	end
+	local n = k1 - k0 + 1
+	print(string.format("ocean %s: %.0f%% bridge, %.0f%% causeway/island (%d samples with sea on both sides)", oSec.name, bridges / n * 100, dry / n * 100, wetSides))
+	check(bridges > n * 0.15 and dry > n * 0.1, "ocean road mixes bridges with causeways and islands")
+	check(wetSides > 0, "causeways with sea on both sides")
+	-- palms on the islands
+	local om = ChunkManager.new(oworld, Config, terrain)
+	local mid = oroad:frameAt((oSec.startS + oSec.endS) / 2)
+	om:setOrigin(mid)
+	local palms = 0
+	for _, sFrac in { 0.3, 0.5, 0.7, 0.9 } do
+		om:setFocus(oroad:frameAt(oSec.startS + (oSec.endS - oSec.startS) * sFrac))
+		om.wantedFocus = nil
+		for _ = 1, 6000 do
+			om:update(0.05)
+			if om:progress(200) >= 1 then
+				break
+			end
+		end
+	end
+	for _, d in om.container:GetDescendants() do
+		if d:IsA("Model") and (d.Name == "Palm" or d.Name == "PalmFar") then
+			palms += 1
+		end
+	end
+	print("ocean palms placed:", palms)
+	check(palms > 10, "palms grow on the ocean islands")
+end
+
+---------------------------------------------------------------------------
+-- 9. sounds: plain ids, loop regions, lists; region ambience
+---------------------------------------------------------------------------
+local SoundUtil = env.require("src/client/SoundUtil")
+local Ambience = env.require("src/client/Ambience")
+local sf = Instance.new("Folder")
+check(SoundUtil.make("", sf, 1, true) == nil, "empty sound id is silence")
+local plain = SoundUtil.make("rbxassetid://80317022777602", sf, 0.5, true)
+check(plain and plain.Looped and plain.Volume == 0.5 and not plain.PlaybackRegionsEnabled, "plain looping sound")
+local region = SoundUtil.make({ Id = "rbxassetid://9112952432", Loop = { 19.36, 34.54 }, Gain = 3 }, sf, 0.5, true)
+check(region and region.PlaybackRegionsEnabled and math.abs(region.LoopRegion.Min - 19.36) < 1e-6 and region.LoopRegion.Max > 34.5, "loop region set")
+check(region and math.abs(region.Volume - 1.5) < 1e-6, "gain applied")
+SoundUtil.setVolume(region, 5)
+check(region.Volume == 10, "volume capped at 10")
+local picks = {}
+for _ = 1, 40 do
+	local sId = SoundUtil.id(SoundUtil.pick({ "rbxassetid://1", { Id = "rbxassetid://2" } }))
+	picks[sId] = true
+end
+check(picks["rbxassetid://1"] and picks["rbxassetid://2"], "lists pick among their entries")
+
+local ambConfig = { Sounds = { Birds = "rbxassetid://9116970949", Surf = "rbxassetid://9119676058", Breeze = { Id = "rbxassetid://9114057104", Loop = { 3.6, 29.82 }, Gain = 6 } } }
+local amb = Ambience.new(ambConfig, sf)
+for _ = 1, 300 do
+	amb:step(1 / 30, "Forest", 0, 0, false)
+end
+check(amb.sounds.Birds.Volume > 0.35 and amb.sounds.Surf.Volume < 0.01, "birds in the forest")
+for _ = 1, 400 do
+	amb:step(1 / 30, "Ocean", 0, 0, false)
+end
+check(amb.sounds.Surf.Volume > 0.3 and amb.sounds.Birds.Volume < 0.05, "surf on the ocean")
+for _ = 1, 400 do
+	amb:step(1 / 30, "Canyon", 0, 0, true)
+end
+check(amb.sounds.Breeze.Volume > 0 and amb.sounds.Breeze.Volume < 0.4 * 6 * 0.35, "breeze in the canyon, muffled in a tunnel")
+
+local wFolder = Instance.new("Folder")
+local sw = Weather.new({
+	Weather = Config.Weather, Textures = Config.Textures, Road = Config.Road, Sky = Config.Sky,
+	Sounds = { Rain = "rbxassetid://1516791621", Thunder = { "rbxassetid://9116282544", { Id = "rbxassetid://9120016241" } } },
+}, { lighting = realLighting, parent = wFolder })
+check(sw.rainSound ~= nil and sw.thunder ~= nil, "rain loop and thunder list set up")
+sw:set("Storm", true)
+for _ = 1, 30 do
+	sw:step(1 / 30, camCF, vel, 12, nil, 1)
+end
+check(sw.rainSound.Volume > 0.3, "rain loop audible in a storm")
+
 if failures == 0 then
 	print("ALL SCENIC CHECKS PASSED")
 else

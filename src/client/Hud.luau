@@ -1,296 +1,369 @@
 --[[
 	Hud
 	---
-	Minimal slowroads-style overlay: loading screen, speed, distance,
-	region banner, autodrive badge, control hints and short toasts.
+	The driving overlay, in the same style as the rest of the interface:
+	loading screen, trip panel (distance plus season, weather and time),
+	speedometer with an autodrive badge, region banner, toasts and the stats
+	overlay. Controls live in the toolbar (UI/App.luau), not here.
 ]]
 
 local Players = game:GetService("Players")
-local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
+
+local Theme = require(script.Parent.UI.Theme)
+local Kit = require(script.Parent.UI.Kit)
 
 local Hud = {}
 Hud.__index = Hud
 
-local rgb = Color3.fromRGB
-local FONT = Enum.Font.GothamBold
-local FONT_LIGHT = Enum.Font.Gotham
+local LEFT = Enum.TextXAlignment.Left
+local RIGHT = Enum.TextXAlignment.Right
+local MPH = 0.621371
 
-local function label(parent, props)
-	local l = Instance.new("TextLabel")
-	l.BackgroundTransparency = 1
-	l.TextColor3 = Color3.new(1, 1, 1)
-	l.Font = FONT
-	l.TextStrokeTransparency = 0.7
-	l.TextStrokeColor3 = Color3.new(0, 0, 0)
-	for k, v in props do
-		l[k] = v
-	end
-	l.Parent = parent
-	return l
-end
-
-function Hud.new(seed: number)
+-- parent: where the ScreenGuis go (defaults to the local PlayerGui)
+function Hud.new(seed: number, parent: Instance?)
 	local self = setmetatable({}, Hud)
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "InfiniteRoadHud"
-	gui.ResetOnSpawn = false
-	gui.IgnoreGuiInset = true
-	gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-	gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
-	self.gui = gui
+	local target = parent or Players.LocalPlayer:WaitForChild("PlayerGui")
+	local touch = Kit.device().touch
+	local m = Theme.Margin
+	self.units = "km/h"
 
-	-- driving HUD
-	local root = Instance.new("Frame")
-	root.Name = "Drive"
-	root.BackgroundTransparency = 1
-	root.Size = UDim2.fromScale(1, 1)
-	root.Parent = gui
-	self.root = root
+	local gui, root = Kit.screen(target, "InfiniteRoadHud", 1)
+	self.gui, self.root = gui, root
+	root.Visible = false -- shown when the drive starts
 
-	self.speed = label(root, {
-		Name = "Speed",
-		AnchorPoint = Vector2.new(1, 1),
-		Position = UDim2.new(1, -28, 1, -40),
-		Size = UDim2.fromOffset(220, 60),
-		TextSize = 54,
-		TextXAlignment = Enum.TextXAlignment.Right,
-		Text = "0",
+	-- trip: distance, then season / weather / time (top left)
+	local trip = Kit.panel(root, {
+		Name = "Trip",
+		Position = UDim2.fromOffset(m, m),
+		Size = UDim2.fromOffset(0, 56),
+		AutomaticSize = Enum.AutomaticSize.X,
 	})
-	label(root, {
-		AnchorPoint = Vector2.new(1, 1),
-		Position = UDim2.new(1, -30, 1, -22),
-		Size = UDim2.fromOffset(220, 20),
-		TextSize = 16,
-		Font = FONT_LIGHT,
-		TextXAlignment = Enum.TextXAlignment.Right,
-		Text = "km/h",
-		TextTransparency = 0.2,
-	})
-	self.distance = label(root, {
+	Kit.padding(trip, 8, 16)
+	Kit.list(trip, false, 2)
+	self.distanceText = Kit.text(trip, {
 		Name = "Distance",
-		Position = UDim2.fromOffset(28, 26),
-		Size = UDim2.fromOffset(400, 22),
-		TextSize = 18,
-		Font = FONT_LIGHT,
-		TextXAlignment = Enum.TextXAlignment.Left,
 		Text = "0.0 km",
+		Font = Theme.FontBold,
+		TextSize = 20,
+		TextXAlignment = LEFT,
+		Size = UDim2.fromOffset(0, 22),
+		AutomaticSize = Enum.AutomaticSize.X,
+		LayoutOrder = 1,
 	})
-	self.info = label(root, {
+	self.infoText = Kit.text(trip, {
 		Name = "Info",
-		Position = UDim2.fromOffset(28, 48),
-		Size = UDim2.fromOffset(400, 18),
-		TextSize = 14,
-		Font = FONT_LIGHT,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextTransparency = 0.25,
-		Text = "",
+		Font = Theme.FontLight,
+		TextSize = 13,
+		TextColor3 = Theme.TextDim,
+		TextXAlignment = LEFT,
+		Size = UDim2.fromOffset(0, 16),
+		AutomaticSize = Enum.AutomaticSize.X,
+		LayoutOrder = 2,
 	})
-	self.region = label(root, {
+
+	-- stats overlay (below the trip panel)
+	self.statsPanel = Kit.panel(root, {
+		Name = "Stats",
+		Position = UDim2.fromOffset(m, m + 64),
+		AutomaticSize = Enum.AutomaticSize.XY,
+		Visible = false,
+	})
+	Kit.padding(self.statsPanel, 10, 14)
+	self.statsText = Kit.text(self.statsPanel, {
+		Name = "Text",
+		Font = Theme.FontMono,
+		TextSize = 12,
+		TextColor3 = Theme.Text,
+		TextXAlignment = LEFT,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		AutomaticSize = Enum.AutomaticSize.XY,
+	})
+
+	-- speedometer: bottom right, or top right on touch screens, where the
+	-- pedals take the bottom corners
+	self.speedPanel = Kit.panel(root, {
+		Name = "Speedometer",
+		AnchorPoint = Vector2.new(1, touch and 0 or 1),
+		Position = touch and UDim2.new(1, -m, 0, m) or UDim2.new(1, -m, 1, -m),
+		Size = UDim2.fromOffset(150, 76),
+	})
+	Kit.padding(self.speedPanel, 6, 16)
+	self.speedText = Kit.text(self.speedPanel, {
+		Name = "Speed",
+		Text = "0",
+		Font = Theme.FontBold,
+		TextSize = 44,
+		TextXAlignment = RIGHT,
+		Size = UDim2.new(1, 0, 0, 46),
+	})
+	self.unitText = Kit.text(self.speedPanel, {
+		Name = "Unit",
+		Text = "km/h",
+		Font = Theme.FontLight,
+		TextSize = 13,
+		TextColor3 = Theme.TextDim,
+		TextXAlignment = RIGHT,
+		Position = UDim2.fromOffset(0, 46),
+		Size = UDim2.new(1, 0, 0, 16),
+	})
+	-- autodrive badge, just outside the speedometer
+	self.badgeFrame = Kit.new("Frame", {
+		Name = "Badge",
+		AnchorPoint = Vector2.new(1, touch and 0 or 1),
+		Position = touch and UDim2.new(1, 16, 1, 14) or UDim2.new(1, 16, 0, -14),
+		Size = UDim2.fromOffset(0, 24),
+		AutomaticSize = Enum.AutomaticSize.X,
+		BackgroundColor3 = Theme.Accent,
+		BorderSizePixel = 0,
+		Visible = false,
+		Parent = self.speedPanel,
+	})
+	Kit.round(self.badgeFrame)
+	Kit.padding(self.badgeFrame, 0, 12)
+	self.badgeText = Kit.text(self.badgeFrame, {
+		Name = "Text",
+		Font = Theme.FontBold,
+		TextSize = 12,
+		TextColor3 = Theme.OnAccent,
+		Size = UDim2.fromOffset(0, 24),
+		AutomaticSize = Enum.AutomaticSize.X,
+	})
+
+	-- region banner (top centre)
+	local region = Kit.new("Frame", {
 		Name = "Region",
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 70),
-		Size = UDim2.fromOffset(700, 48),
-		TextSize = 40,
-		Text = "",
-		TextTransparency = 1,
-		TextStrokeTransparency = 1,
+		Position = UDim2.new(0.5, 0, 0, m + 4),
+		Size = UDim2.fromOffset(700, 78),
+		BackgroundTransparency = 1,
+		Visible = false,
+		Parent = root,
 	})
-	self.regionSub = label(root, {
+	self.regionFrame = region
+	self.regionText = Kit.text(region, {
+		Name = "Name",
+		Font = Theme.FontBold,
+		TextSize = 34,
+		TextStrokeTransparency = 0.8,
+		Size = UDim2.new(1, 0, 0, 40),
+	})
+	local bar = Kit.new("Frame", {
+		Name = "Accent",
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 118),
-		Size = UDim2.fromOffset(700, 22),
-		TextSize = 18,
-		Font = FONT_LIGHT,
-		Text = "",
-		TextTransparency = 1,
-		TextStrokeTransparency = 1,
+		Position = UDim2.new(0.5, 0, 0, 46),
+		Size = UDim2.fromOffset(36, 3),
+		BackgroundColor3 = Theme.Accent,
+		BorderSizePixel = 0,
+		Parent = region,
 	})
-	self.badge = label(root, {
-		Name = "Badge",
-		AnchorPoint = Vector2.new(1, 1),
-		Position = UDim2.new(1, -28, 1, -102),
-		Size = UDim2.fromOffset(260, 22),
-		TextSize = 16,
-		TextXAlignment = Enum.TextXAlignment.Right,
-		TextColor3 = rgb(150, 230, 170),
-		Text = "",
-	})
-	local touch = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
-	self.hints = label(root, {
-		Name = "Hints",
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 28, 1, -22),
-		Size = UDim2.fromOffset(700, 40),
+	Kit.round(bar)
+	self.regionSubText = Kit.text(region, {
+		Name = "Subtitle",
+		Font = Theme.Font,
 		TextSize = 14,
-		Font = FONT_LIGHT,
-		TextWrapped = true,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextYAlignment = Enum.TextYAlignment.Bottom,
-		TextTransparency = 0.25,
-		Visible = not touch,
-		Text = "W/S drive   A/D steer   Space handbrake   F autodrive   C camera   V car/bike   N season   G weather   T time   M menu   R reset   H hide HUD   F3 stats",
+		TextColor3 = Theme.Text,
+		TextStrokeTransparency = 0.85,
+		Position = UDim2.fromOffset(0, 56),
+		Size = UDim2.new(1, 0, 0, 18),
 	})
-	self.toastLabel = label(root, {
+
+	-- toasts (just above the toolbar)
+	self.toastFrame = Kit.panel(root, {
 		Name = "Toast",
 		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, -60),
-		Size = UDim2.fromOffset(500, 26),
-		TextSize = 20,
-		Text = "",
-		TextTransparency = 1,
-		TextStrokeTransparency = 1,
-	})
-	self.stats = label(gui, {
-		Name = "Stats",
-		Position = UDim2.fromOffset(28, 72),
-		Size = UDim2.fromOffset(720, 100),
-		TextSize = 14,
-		Font = Enum.Font.Code,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextYAlignment = Enum.TextYAlignment.Top,
-		TextColor3 = rgb(210, 255, 210),
-		TextStrokeTransparency = 0.4,
+		Position = UDim2.new(0.5, 0, 1, -Theme.ToolbarReserve),
+		Size = UDim2.fromOffset(0, 38),
+		AutomaticSize = Enum.AutomaticSize.X,
 		Visible = false,
-		Text = "",
 	})
-	root.Visible = false
+	Kit.padding(self.toastFrame, 0, 18)
+	self.toastText = Kit.text(self.toastFrame, {
+		Name = "Text",
+		TextSize = 15,
+		Size = UDim2.fromOffset(0, 38),
+		AutomaticSize = Enum.AutomaticSize.X,
+	})
 
-	-- loading screen
-	local loading = Instance.new("Frame")
-	loading.Name = "Loading"
-	loading.Size = UDim2.fromScale(1, 1)
-	loading.BackgroundColor3 = rgb(18, 22, 28)
-	loading.BorderSizePixel = 0
-	loading.ZIndex = 10
-	loading.Parent = gui
-	self.loading = loading
-	label(loading, {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.42),
-		Size = UDim2.fromOffset(800, 60),
-		TextSize = 46,
-		Text = "INFINITE SCENIC ROAD",
-		ZIndex = 11,
-	})
-	label(loading, {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.49),
-		Size = UDim2.fromOffset(800, 24),
-		TextSize = 18,
-		Font = FONT_LIGHT,
-		TextTransparency = 0.3,
-		Text = "generating your road  -  seed " .. tostring(seed),
-		ZIndex = 11,
-	})
-	local barBack = Instance.new("Frame")
-	barBack.AnchorPoint = Vector2.new(0.5, 0.5)
-	barBack.Position = UDim2.fromScale(0.5, 0.56)
-	barBack.Size = UDim2.fromOffset(360, 6)
-	barBack.BackgroundColor3 = rgb(60, 66, 76)
-	barBack.BorderSizePixel = 0
-	barBack.ZIndex = 11
-	barBack.Parent = loading
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(1, 0)
-	corner.Parent = barBack
-	local bar = Instance.new("Frame")
-	bar.Size = UDim2.fromScale(0, 1)
-	bar.BackgroundColor3 = rgb(240, 200, 80)
-	bar.BorderSizePixel = 0
-	bar.ZIndex = 12
-	bar.Parent = barBack
-	corner:Clone().Parent = bar
-	self.bar = bar
+	self:_buildLoading(target, seed)
 	return self
 end
 
-function Hud:setProgress(fraction: number)
-	self.bar.Size = UDim2.fromScale(math.clamp(fraction, 0, 1), 1)
+function Hud:_buildLoading(parent: Instance, seed: number)
+	local gui, root = Kit.screen(parent, "InfiniteRoadLoading", 20, true)
+	self.loadingGui = gui
+	local loading = Kit.new("Frame", {
+		Name = "Loading",
+		BackgroundColor3 = Theme.Backdrop,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		Parent = root,
+	})
+	self.loading = loading
+	local center = Kit.new("Frame", {
+		Name = "Center",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(600, 150),
+		BackgroundTransparency = 1,
+		Parent = loading,
+	})
+	local accent = Kit.new("Frame", {
+		Name = "Accent",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.fromScale(0.5, 0),
+		Size = UDim2.fromOffset(36, 4),
+		BackgroundColor3 = Theme.Accent,
+		BorderSizePixel = 0,
+		Parent = center,
+	})
+	Kit.round(accent)
+	Kit.text(center, {
+		Name = "Title",
+		Text = "INFINITE SCENIC ROAD",
+		Font = Theme.FontBold,
+		TextSize = 40,
+		Position = UDim2.fromOffset(0, 16),
+		Size = UDim2.new(1, 0, 0, 46),
+	})
+	Kit.text(center, {
+		Name = "Subtitle",
+		Text = "Generating your road  ·  seed " .. tostring(seed),
+		Font = Theme.FontLight,
+		TextSize = 15,
+		TextColor3 = Theme.TextDim,
+		Position = UDim2.fromOffset(0, 66),
+		Size = UDim2.new(1, 0, 0, 20),
+	})
+	local track = Kit.new("Frame", {
+		Name = "Track",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 108),
+		Size = UDim2.fromOffset(360, 6),
+		BackgroundColor3 = Theme.Surface,
+		BorderSizePixel = 0,
+		Parent = center,
+	})
+	Kit.round(track)
+	self.bar = Kit.new("Frame", {
+		Name = "Fill",
+		Size = UDim2.fromScale(0, 1),
+		BackgroundColor3 = Theme.Accent,
+		BorderSizePixel = 0,
+		Parent = track,
+	})
+	Kit.round(self.bar)
+	self.percentText = Kit.text(center, {
+		Name = "Percent",
+		Text = "0%",
+		Font = Theme.Font,
+		TextSize = 13,
+		TextColor3 = Theme.TextDim,
+		Position = UDim2.fromOffset(0, 124),
+		Size = UDim2.new(1, 0, 0, 18),
+	})
 end
 
+function Hud:setProgress(fraction: number)
+	local f = math.clamp(fraction, 0, 1)
+	self.bar.Size = UDim2.fromScale(f, 1)
+	self.percentText.Text = string.format("%d%%", math.floor(f * 100))
+end
+
+-- Fade the loading screen out (the start screen is ready behind it).
 function Hud:finishLoading()
-	local fade = TweenService:Create(self.loading, TweenInfo.new(1.2), { BackgroundTransparency = 1 })
-	for _, d in self.loading:GetDescendants() do
-		if d:IsA("TextLabel") then
-			TweenService:Create(d, TweenInfo.new(0.8), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
-		elseif d:IsA("Frame") then
-			TweenService:Create(d, TweenInfo.new(0.8), { BackgroundTransparency = 1 }):Play()
+	Kit.fade(self.loading, false, 0.9)
+	task.delay(1, function()
+		if self.loadingGui then
+			self.loadingGui:Destroy()
+			self.loadingGui = nil
 		end
-	end
-	fade:Play()
-	fade.Completed:Connect(function()
-		self.loading.Visible = false
 	end)
-	self.root.Visible = true
 end
 
 function Hud:setVisible(on: boolean)
 	self.root.Visible = on
 end
 
+function Hud:setUnits(units: string)
+	self.units = units
+	self.unitText.Text = units
+end
+
+function Hud:setSpeedometer(on: boolean)
+	self.speedPanel.Visible = on
+end
+
 function Hud:update(speed: number, distanceStuds: number)
 	-- 1 stud ~ 0.28 m, so studs/s ~ km/h. Only touch the labels when the
 	-- text changes (setting Text re-lays out the label).
-	local sp = tostring(math.floor(math.abs(speed) * 1.008 + 0.5))
-	if sp ~= self.speed.Text then
-		self.speed.Text = sp
+	local kmh = math.abs(speed) * 1.008
+	local km = distanceStuds * 0.00028
+	local sp, dist
+	if self.units == "mph" then
+		sp, dist = tostring(math.floor(kmh * MPH + 0.5)), string.format("%.1f mi", km * MPH)
+	else
+		sp, dist = tostring(math.floor(kmh + 0.5)), string.format("%.1f km", km)
 	end
-	local dist = string.format("%.1f km", distanceStuds * 0.00028)
-	if dist ~= self.distance.Text then
-		self.distance.Text = dist
+	if sp ~= self.speedText.Text then
+		self.speedText.Text = sp
+	end
+	if dist ~= self.distanceText.Text then
+		self.distanceText.Text = dist
 	end
 end
 
 -- Small line under the distance (season, weather, time).
 function Hud:setInfo(text: string)
-	if self.info.Text ~= text then
-		self.info.Text = text
+	if self.infoText.Text ~= text then
+		self.infoText.Text = text
 	end
 end
 
--- Debug overlay text; nil hides it.
+-- Stats overlay text; nil hides it.
 function Hud:setStats(text: string?)
-	self.stats.Visible = text ~= nil
+	self.statsPanel.Visible = text ~= nil
 	if text and text ~= "" then
-		self.stats.Text = text
+		self.statsText.Text = text
 	end
 end
 
+-- Pill beside the speedometer ("" hides it).
 function Hud:setBadge(text: string)
-	self.badge.Text = text
-end
-
-local function fadeText(l: TextLabel, visible: boolean, time: number)
-	TweenService:Create(l, TweenInfo.new(time), {
-		TextTransparency = visible and 0 or 1,
-		TextStrokeTransparency = visible and 0.7 or 1,
-	}):Play()
+	if self.badgeText.Text ~= text then
+		self.badgeText.Text = text
+		self.badgeFrame.Visible = text ~= ""
+	end
 end
 
 function Hud:showRegion(name: string, subtitle: string)
-	self.region.Text = name
-	self.regionSub.Text = subtitle
-	fadeText(self.region, true, 1.5)
-	fadeText(self.regionSub, true, 1.5)
+	self.regionText.Text = name
+	self.regionSubText.Text = string.upper(subtitle)
+	local frame = self.regionFrame
+	frame.Position = UDim2.new(0.5, 0, 0, Theme.Margin - 6)
+	Kit.tween(frame, { Position = UDim2.new(0.5, 0, 0, Theme.Margin + 4) }, 1.2)
+	Kit.fade(frame, true, 1.2)
 	local token = {}
-	self._regionToken = token
+	self.regionToken = token
 	task.delay(5, function()
-		if self._regionToken == token then
-			fadeText(self.region, false, 2)
-			fadeText(self.regionSub, false, 2)
+		if self.regionToken == token then
+			Kit.fade(frame, false, 1.6)
 		end
 	end)
 end
 
 function Hud:toast(text: string)
-	self.toastLabel.Text = text
-	fadeText(self.toastLabel, true, 0.2)
+	self.toastText.Text = text
+	local frame = self.toastFrame
+	if not frame.Visible then
+		frame.Position = UDim2.new(0.5, 0, 1, -Theme.ToolbarReserve + 8)
+	end
+	Kit.tween(frame, { Position = UDim2.new(0.5, 0, 1, -Theme.ToolbarReserve) }, Theme.Normal)
+	Kit.fade(frame, true, Theme.Normal)
 	local token = {}
-	self._toastToken = token
+	self.toastToken = token
 	task.delay(1.8, function()
-		if self._toastToken == token then
-			fadeText(self.toastLabel, false, 0.6)
+		if self.toastToken == token then
+			Kit.fade(frame, false, 0.5)
 		end
 	end)
 end

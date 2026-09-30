@@ -129,6 +129,10 @@ function TerrainBuilder:_surface(ty, hint, flags, slope, h, water, v)
 		return (ty == T.Coast and SLATE) or ROCK
 	end
 	local snowGround = season.snowGround and slope < 0.85
+	if ty == T.Ocean and btest(flags, FLAG.Fill) then
+		-- causeway embankments: sand, with rock armour on the steep parts
+		return slope > 0.5 and ROCK or SAND
+	end
 	if btest(flags, FLAG.Fill) then
 		if snowGround then
 			return SNOW
