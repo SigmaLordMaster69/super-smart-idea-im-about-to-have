@@ -247,6 +247,8 @@ lune run tools/test_chunks [seed]           # full chunk pipeline: voxels, road,
 lune run tools/test_assets                  # fake asset packs: cleaning, scaling, placement, guard rails, car + bike bodies and wheels
 lune run tools/test_scenic [seed]           # seasons (snow, ice, tree styles), weather/environment, motorcycle, parallel worker path, waterfalls, ocean
 lune run tools/test_ui                      # builds and clicks through the whole interface (desktop, touch, gamepad sizes)
+lune run tools/test_props [seed]            # props and road furniture: z-fighting, hidden and floating parts, sign text, part budgets
+lune run tools/render_props out.json && python3 tools/render_props.py out.json sheets/   # contact sheets of every prop
 lune run tools/bench                        # terrain build time per chunk
 lune run tools/curve_stats [seed]           # curve radius distribution
 lune run tools/list_sections [seed]         # region sequence
