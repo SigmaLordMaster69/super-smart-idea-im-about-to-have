@@ -41,6 +41,10 @@
             "$className": "Folder",
             "$ignoreUnknownInstances": true
           },
+          "Palm": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          },
           "Cactus": {
             "$className": "Folder",
             "$ignoreUnknownInstances": true

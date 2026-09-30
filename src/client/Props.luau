@@ -217,6 +217,53 @@ function BUILDERS.cypress(sc, variant, far, style)
 	return finish(m, "Cypress")
 end
 
+local PALM_TRUNK = rgb(150, 124, 92)
+local PALM_LEAF = rgb(70, 132, 60)
+
+-- coconut palm: a leaning trunk and a crown of drooping fronds
+function BUILDERS.palm(sc, variant, far, style)
+	local m = Instance.new("Model")
+	local leaf = style.frost and PALM_LEAF:Lerp(FROST, 0.4) or (style.autumn and PALM_LEAF:Lerp(rgb(150, 140, 60), 0.35) or PALM_LEAF)
+	local lean = math.rad(6 + (variant % 3) * 5)
+	local h = 13 * sc
+	local top = Vector3.new(math.sin(lean) * h, math.cos(lean) * h, 0)
+	if far then
+		ball(m, top, 8 * sc, leaf)
+		cylinder(m, 0, h, 1.1 * sc, PALM_TRUNK, Enum.Material.Wood, Vector3.new(top.X * 0.5, 0, 0))
+		return finish(m, "PalmFar")
+	end
+	-- trunk in two segments, bending a little more towards the top
+	local mid = Vector3.new(math.sin(lean * 0.6) * h * 0.5, math.cos(lean * 0.6) * h * 0.5, 0)
+	for i, seg in { { Vector3.new(0, -1.5, 0), mid, 1.5 }, { mid, top, 1.2 } } do
+		local a, b, d = seg[1], seg[2], seg[3] * sc
+		local p = newPart("Part", {
+			Name = "Trunk",
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new((b - a).Magnitude + 0.4, d, d),
+			CFrame = CFrame.lookAt((a + b) * 0.5, b) * CFrame.Angles(0, math.pi / 2, 0),
+			Color = PALM_TRUNK,
+			Material = Enum.Material.Wood,
+			CanCollide = i == 1,
+		})
+		p.Parent = m
+	end
+	-- fronds: flat wedges drooping out from the crown
+	local n = 7
+	for i = 1, n do
+		local yaw = (i + variant * 0.37) / n * math.pi * 2
+		local len = (6 + (i % 2)) * sc
+		local frond = newPart("WedgePart", {
+			Name = "Frond",
+			Size = Vector3.new(0.3 * sc, 2.2 * sc, len),
+			CFrame = CFrame.new(top) * CFrame.Angles(0, yaw, 0) * CFrame.Angles(math.rad(24), 0, 0) * CFrame.new(0, -0.6 * sc, -len / 2) * CFrame.Angles(0, 0, math.pi / 2),
+			Color = leaf:Lerp(Color3.new(), (i % 3) * 0.05),
+		})
+		frond.Parent = m
+	end
+	ball(m, top + Vector3.new(0, -0.4 * sc, 0), 1.6 * sc, rgb(110, 84, 50))
+	return finish(m, "Palm")
+end
+
 function BUILDERS.cactus(sc, variant, far, style)
 	local m = Instance.new("Model")
 	if far then
@@ -311,7 +358,7 @@ function Props:_asset(kind: string, sizeClass: number, variant: number): Model?
 end
 
 -- Returns a fresh clone of a tree/plant template.
--- kind: pine, snowpine, oak, birch, cypress, cactus, bush, drybush, flowers
+-- kind: pine, snowpine, oak, birch, cypress, palm, cactus, bush, drybush, flowers
 -- size: 1..3, variant: any integer, far: one-part version
 function Props:tree(kind: string, size: number, variant: number, far: boolean, autumn: boolean?)
 	local assets = self.assets

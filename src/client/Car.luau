@@ -22,6 +22,7 @@ local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
 
 local Motorcycle = require(script.Parent.Motorcycle)
+local Vehicles = require(script.Parent.Vehicles)
 
 local Car = {}
 Car.__index = Car
@@ -112,26 +113,35 @@ local function buildCarBody(self, model, chassis, color)
 end
 
 -- Vehicle tuning: Config.Car, with Config.Motorcycle on top for bikes.
-function Car.tuning(config, kind: string)
+-- Tuning for a vehicle id (or the old "Car" / "Motorcycle" kinds).
+function Car.tuning(config, id: string)
+	local spec = Vehicles.get(id)
 	local tune = table.clone(config.Car)
-	if kind == "Motorcycle" then
+	if spec.kind == "Motorcycle" then
 		for k, v in config.Motorcycle do
 			tune[k] = v
 		end
+	end
+	for k, v in spec.tuning or {} do
+		tune[k] = v
 	end
 	return tune
 end
 
 --[[
-	kind: "Car" (default) or "Motorcycle". Both use the same physics; the
-	motorcycle has a narrower, shorter footprint, its own tuning, and leans
-	visually into corners.
+	id: a vehicle id from Vehicles (default "Sedan"; "Car" and "Motorcycle"
+	still work). Cars and motorcycles use the same physics; motorcycles have
+	a narrower, shorter footprint, their own tuning, and lean visually into
+	corners.
 ]]
-function Car.new(config, color: Color3, assets, kind: string?)
+function Car.new(config, color: Color3, assets, id: string?)
 	local self = setmetatable({}, Car)
-	kind = kind or "Car"
+	local spec = Vehicles.get(id)
+	local kind = spec.kind
 	self.kind = kind
-	local cc = Car.tuning(config, kind)
+	self.vehicleId = spec.id
+	self.spec = spec
+	local cc = Car.tuning(config, spec.id)
 	self.config = cc
 	self.gripScale = 1
 	self.wetness = 0
@@ -519,7 +529,8 @@ function Car:_sounds(sounds)
 		snd:Play()
 		return snd
 	end
-	local engineId = self.kind == "Motorcycle" and sounds.MotorcycleEngine ~= "" and sounds.MotorcycleEngine or sounds.Engine
+	local own = self.spec and self.spec.sound and sounds[self.spec.sound]
+	local engineId = (own and own ~= "" and own) or (self.kind == "Motorcycle" and sounds.MotorcycleEngine ~= "" and sounds.MotorcycleEngine) or sounds.Engine
 	self.engineSound = make(engineId, 0.35)
 	self.windSound = make(sounds.Wind, 0)
 end

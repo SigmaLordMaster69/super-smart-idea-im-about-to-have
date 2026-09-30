@@ -6,7 +6,7 @@
 	Put several models in one folder to get random variants. Leave a folder
 	empty to keep the built-in version.
 
-	  Trees/Pine  SnowPine  Oak  OakAutumn  Birch  BirchAutumn  Cypress  Cactus
+	  Trees/Pine  SnowPine  Oak  OakAutumn  Birch  BirchAutumn  Cypress  Palm  Cactus
 	  Plants/Bush  DryBush  Flowers
 	  Rocks
 	  Signs/CurveLeft  CurveRight  ChevronLeft  ChevronRight  Tunnel

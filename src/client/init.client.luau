@@ -31,6 +31,7 @@ local Atmosphere = require(script.Atmosphere)
 local AssetLibrary = require(script.AssetLibrary)
 local Quality = require(script.Quality)
 local WorkerPool = require(script.WorkerPool)
+local Vehicles = require(script.Vehicles)
 local Environment = require(script.Environment)
 local SettingsMenu = require(script.SettingsMenu)
 
@@ -213,13 +214,13 @@ end
 -- Vehicle
 ---------------------------------------------------------------------------
 local colorRng = Random.new(player.UserId + seed)
-local vehicleKind = "Car"
-local function pickColor(kind)
-	local colors = kind == "Motorcycle" and Config.Motorcycle.Colors or Config.Car.Colors
+local vehicleId = Vehicles.Default
+local function pickColor(id)
+	local colors = Vehicles.get(id).colors
 	return colors[colorRng:NextInteger(1, #colors)]
 end
 
-local car = Car.new(Config, pickColor(vehicleKind), assets, vehicleKind)
+local car = Car.new(Config, pickColor(vehicleId), assets, vehicleId)
 car.model.Parent = Workspace
 
 -- Roblox-space CFrame in the driving lane at arc length s
@@ -246,17 +247,19 @@ local function resetCar()
 	car:teleport(laneCFrame(math.max(carS(), 40)))
 end
 
-local function switchVehicle()
-	vehicleKind = vehicleKind == "Car" and "Motorcycle" or "Car"
+-- Swap to vehicle `id` (default: the next one in the list), keeping the
+-- position and speed.
+local function switchVehicle(id: string?, color: Color3?)
+	vehicleId = Vehicles.resolve(id or Vehicles.next(vehicleId))
 	local cf, vel = car:getCFrame(), car:getVelocity()
-	local nextCar = Car.new(Config, pickColor(vehicleKind), assets, vehicleKind)
+	local nextCar = Car.new(Config, color or pickColor(vehicleId), assets, vehicleId)
 	nextCar.model.Parent = Workspace
 	nextCar:teleport(cf + cf.UpVector * 0.5)
 	nextCar.chassis.AssemblyLinearVelocity = vel
 	car:destroy()
 	car = nextCar
 	roofParams.FilterDescendantsInstances = { car.model, effects }
-	hud:toast(vehicleKind)
+	hud:toast(Vehicles.get(vehicleId).name)
 end
 
 manager.onRebase = function(delta: Vector3)
@@ -295,7 +298,9 @@ local actions = {
 		statsVisible = not statsVisible
 		hud:setStats(statsVisible and "" or nil)
 	end,
-	vehicle = switchVehicle,
+	vehicle = function()
+		switchVehicle()
+	end,
 	season = function()
 		hud:toast("Season: " .. environment:cycleSeason())
 	end,
@@ -311,8 +316,10 @@ for name, fn in actions do
 end
 
 menu:addRow("Vehicle", function()
-	return vehicleKind
-end, switchVehicle)
+	return Vehicles.get(vehicleId).name
+end, function()
+	switchVehicle()
+end)
 menu:addRow("Season", function()
 	return environment.seasonAuto and ("Auto (" .. environment.season .. ")") or environment.season
 end, actions.season)

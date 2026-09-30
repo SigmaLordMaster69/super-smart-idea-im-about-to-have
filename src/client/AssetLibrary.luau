@@ -6,7 +6,7 @@
 
 	  ReplicatedStorage.InfiniteRoadAssets
 	    Trees/Pine  Trees/SnowPine  Trees/Oak  Trees/OakAutumn  Trees/Birch
-	    Trees/BirchAutumn  Trees/Cypress  Trees/Cactus
+	    Trees/BirchAutumn  Trees/Cypress  Trees/Palm  Trees/Cactus
 	    Plants/Bush  Plants/DryBush  Plants/Flowers
 	    Rocks
 	    Signs/CurveLeft  Signs/CurveRight  Signs/ChevronLeft  Signs/ChevronRight
@@ -47,6 +47,7 @@ local KINDS = {
 	birch = { path = "Trees/Birch", sizes = { 18, 24, 30 } },
 	birch_autumn = { path = "Trees/BirchAutumn", sizes = { 18, 24, 30 } },
 	cypress = { path = "Trees/Cypress", sizes = { 16, 21, 27 } },
+	palm = { path = "Trees/Palm", sizes = { 16, 22, 28 } },
 	cactus = { path = "Trees/Cactus", sizes = { 9, 12, 16 } },
 	bush = { path = "Plants/Bush", sizes = { 4, 5.5, 7 } },
 	drybush = { path = "Plants/DryBush", sizes = { 3, 4, 5 } },
