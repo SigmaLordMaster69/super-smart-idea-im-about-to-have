@@ -5,7 +5,9 @@ A [slowroads.io](https://slowroads.io)-style endless driving game for Roblox. On
 - **Mountains** with snowy peaks, rock cuts and **tunnels** through the ridges
 - **Coastal cliff roads** above the ocean, with beaches, coves, sea stacks, headland tunnels and bridges over river mouths
 - **Canyons**: tiered red-rock walls with rock strata, mesas and buttes, a river along the canyon floor, and big **bridges** over gorges
-- **Lakes** with sandy shores and islands, beside a flat lakeside road
+- **Lakes** with sandy shores and low wooded islands, beside a flat lakeside road
+- **Ocean**: island hopping across open sea on low bridges and sand causeways between palm-covered keys, with a higher bridge over each boat channel
+- **Waterfalls** wherever a river or lake runs off an edge (icefalls in winter)
 - **Rivers**: river valleys where the river winds beside the road and crosses under it, plus rivers that cross the road at an angle
 - **Forests** (some sections in autumn colours) and **meadows** with flowers
 - **Trees and plants** matched to each region: pines, snowy pines, oaks, birches, wind-swept coastal cypresses, cacti, bushes, dry shrubs, flowers and rocks
@@ -144,10 +146,12 @@ Every client generates its own copy of the world from a **shared seed** that the
   - **guard rail** where the ground next to the road drops away or there is water close by.
 
 ### Regions and landforms (`Sections.luau`, `TerrainSampler.luau`)
-- The road is divided into **sections** (Meadow, Forest, Mountains, Coast, Canyon, Lake, RiverValley), each 2–6k studs long, which cross-fade over 900 studs. They are generated lazily from the seed, and each one gets a name ("Redrock Canyon", "Lake Serene", ...).
+- The road is divided into **sections** (Meadow, Forest, Mountains, Coast, Canyon, Lake, RiverValley, Ocean), each 2–6k studs long, which cross-fade over 900 studs. They are generated lazily from the seed, and each one gets a name ("Redrock Canyon", "Lake Serene", ...).
 - Each region has its own height function, defined relative to the road (distance to the side `d`, arc length `s`). Mountain relief is damped close to the road, so the road runs along valleys with the peaks beside it.
 - **Crossings** are landforms laid across the road at an angle: *ridges* force tunnels, and *rivers* and *gorges* force bridges.
 - Then the road corridor is applied: cuts and embankments with slopes that suit the material, tunnel voids with an arched profile (plus cut-and-cover where the rock is thin), and natural ground left under bridges.
+- **Voxels:** smooth terrain only draws a partly filled voxel as a flat surface when a full voxel sits under it; otherwise it becomes a lumpy blob. So every column's shell starts on a voxel boundary with at least one full voxel under the surface, tunnel roofs sit on the voxel grid, and the ground under the road stays 1.1–1.5 studs below it (edges included). `test_chunks` checks all three on the written voxels.
+- **Waterfalls** (`Waterfalls.luau`): terrain water can't flow, so each chunk looks for water columns next to a much lower surface, joins those edges into one lip, follows the ground down, and lays a sheet of water over the drop, with foam from the lip and spray at the bottom.
 
 ### Streaming and performance (`ChunkManager.luau`, `WorkerPool.luau`, `GenWorker/`)
 - The world is built in 128×128-stud chunks around a point just ahead of the car. Each chunk gets voxel terrain, road parts and decoration. Chunks ahead of the car are loaded before those beside and behind it.
@@ -188,6 +192,8 @@ src/client/     StarterPlayerScripts.InfiniteRoadClient
   WorkerPool.luau      dispatches terrain jobs to the GenWorker actors
   GenWorker/           Actor + Worker script (parallel terrain sampling)
   Weather.luau, Seasons.luau, Environment.luau   weather, seasons, auto modes
+  Waterfalls.luau      waterfalls where water runs off an edge
+  Vehicles.luau        vehicle catalogue (ids, names, tuning, colours)
   Car.luau, Motorcycle.luau, AutoDrive.luau, CameraController.luau
   Input.luau, Hud.luau, SettingsMenu.luau, Quality.luau, Atmosphere.luau
   AssetLibrary.luau    premade model slots (asset packs)
@@ -213,6 +219,8 @@ Everything lives in `src/shared/Config.luau`. The most useful settings:
 | `Weather.Start`, `Seasons.Start` | `Auto`, or lock one weather / season |
 | `Weather.MinDuration`/`MaxDuration`, `Seasons.CycleMinutes` | how often the weather and the season change in Auto mode |
 | `Sky.DayLengthMinutes` | 0 freezes time |
+| `Sky.KeepPlaceSky` | keep a custom Sky object from your place (by default it is hidden so the default sky, clouds and weather show) |
+| `Car.RearGrip`, `Car.StabilityAssist` | rear grip bias and the anti-spin yaw correction (off while the handbrake is held); the motorcycle has its own |
 
 ## Offline tests
 
@@ -223,7 +231,7 @@ lune run tools/check_syntax                 # every source file compiles; the pl
 lune run tools/test_road [seed] [studs]     # road invariants: monotonic X, min radius, max grade, flags, determinism, projection
 lune run tools/test_chunks [seed]           # full chunk pipeline: voxels, road, tunnels, bridges, decoration, rebase
 lune run tools/test_assets                  # fake asset packs: cleaning, scaling, placement, guard rails, car + bike bodies and wheels
-lune run tools/test_scenic [seed]           # seasons (snow, ice, tree styles), weather/environment, motorcycle, parallel worker path
+lune run tools/test_scenic [seed]           # seasons (snow, ice, tree styles), weather/environment, motorcycle, parallel worker path, waterfalls, ocean
 lune run tools/bench                        # terrain build time per chunk
 lune run tools/curve_stats [seed]           # curve radius distribution
 lune run tools/list_sections [seed]         # region sequence
