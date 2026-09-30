@@ -61,22 +61,34 @@ If you copy the scripts into your own place instead:
 
 ## Controls
 
-| | Keyboard | Gamepad | Touch |
-|---|---|---|---|
-| Drive / brake / reverse | W / S (or arrows) | RT / LT | GAS / BRAKE |
-| Steer | A / D (or arrows) | Left stick | ◀ ▶ |
-| Handbrake | Space | A | |
-| Autodrive | F | X | AUTO |
-| Camera (chase, hood, cinematic) | C | Y | CAM |
-| Look around | Right-drag, wheel to zoom | Right stick | |
-| Put the car back on the road | R | B | RESET |
-| Time of day | T | D-pad up | |
-| Hide HUD | H | D-pad down | |
-| Car / motorcycle | V | D-pad left | menu |
-| Season (Auto, Spring, Summer, Autumn, Winter) | N | | menu |
-| Weather (Auto, Clear, Cloudy, Rain, Storm, Fog, Snow) | G | D-pad right | menu |
-| Settings menu | M or the ⚙ button | Select | ⚙ |
-| Stats overlay (FPS, chunks, workers, frame budget) | F3 | | |
+Everything is clickable, or tappable on a phone or tablet:
+
+- **Start screen** (after loading, over the blurred world): pick a vehicle and its paint, the season, weather and time of day, then press **Drive** or **Autodrive**. Every choice shows up in the world straight away.
+- **Toolbar** along the bottom: **Autodrive** (on/off), **Camera** (chase, hood, cinematic), **Vehicle**, **Season**, **Weather**, **Time** (with the day/night cycle switch), **Reset** (put the vehicle back on the road), **Photo** and **Settings**. Camera, Vehicle, Season, Weather and Time open a small panel where you click the option you want. Hover a button for a hint.
+- **Settings**: graphics quality (Auto, Low, Medium, High, Ultra), camera, speed units (km/h or mph), speedometer, stats overlay (FPS, chunks, workers) and the day/night cycle.
+- **Photo mode** hides the whole interface. Click or tap anywhere, or press Esc, to bring it back.
+- **Touch screens**: GAS, BRAKE and ◀ ▶ buttons sit just above the toolbar.
+
+Keyboard and gamepad shortcuts are optional extras. The **?** button beside the toolbar lists them:
+
+| | Keyboard | Gamepad |
+|---|---|---|
+| Drive / brake / reverse | W / S (or arrows) | RT / LT |
+| Steer | A / D (or arrows) | Left stick |
+| Handbrake | Space | A |
+| Autodrive | F | X |
+| Camera (chase, hood, cinematic) | C | Y |
+| Look around | Right-drag, wheel to zoom | Right stick |
+| Put the car back on the road | R | B |
+| Next time of day | T | D-pad up |
+| Photo mode | H | D-pad down |
+| Next vehicle | V | D-pad left |
+| Next season | N | |
+| Next weather | G | D-pad right |
+| Settings | M | Select |
+| Stats overlay | F3 | |
+| Start driving (start screen) | Enter | A on "Drive" |
+| Close a panel, leave photo mode | Esc | |
 
 Pressing any drive key turns autodrive off. A car that flips or ends up in the water is put back on the road automatically.
 

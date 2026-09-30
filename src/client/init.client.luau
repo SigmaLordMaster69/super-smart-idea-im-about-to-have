@@ -7,8 +7,10 @@
 
 	Flow: wait for the seed, pick a quality preset, start the parallel
 	terrain workers, build the area around the spawn behind a loading
-	screen, drop the vehicle on the road, then keep streaming chunks around
-	it every frame while the Environment runs seasons and weather.
+	screen, drop the vehicle on the road and show the start screen, then
+	keep streaming chunks around it every frame while the Environment runs
+	seasons and weather. The interface (UI/App.luau) reads and changes the
+	game through the `app` table below.
 ]]
 
 local Players = game:GetService("Players")
@@ -33,9 +35,10 @@ local Quality = require(script.Quality)
 local WorkerPool = require(script.WorkerPool)
 local Vehicles = require(script.Vehicles)
 local Environment = require(script.Environment)
-local SettingsMenu = require(script.SettingsMenu)
+local App = require(script.UI.App)
 
 local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
 local rc = Config.Road
 
 local SUBTITLES = {
@@ -57,7 +60,7 @@ while seed == nil do
 	seed = Shared:GetAttribute("Seed")
 end
 
-local hud = Hud.new(seed)
+local hud = Hud.new(seed, playerGui)
 Atmosphere.apply(Config)
 
 local qualityMode = Config.Quality.Default
@@ -220,7 +223,8 @@ local function pickColor(id)
 	return colors[colorRng:NextInteger(1, #colors)]
 end
 
-local car = Car.new(Config, pickColor(vehicleId), assets, vehicleId)
+local vehicleColor = pickColor(vehicleId)
+local car = Car.new(Config, vehicleColor, assets, vehicleId)
 car.model.Parent = Workspace
 
 -- Roblox-space CFrame in the driving lane at arc length s
@@ -236,7 +240,6 @@ roofParams.FilterDescendantsInstances = { car.model, effects }
 local autodrive = AutoDrive.new(world, Config)
 local camera = CameraController.new(Config, world, manager)
 local input = Input.new()
-local menu = SettingsMenu.new()
 
 local function carS(): number
 	local wp = manager:toWorld(car:getCFrame().Position)
@@ -251,8 +254,9 @@ end
 -- position and speed.
 local function switchVehicle(id: string?, color: Color3?)
 	vehicleId = Vehicles.resolve(id or Vehicles.next(vehicleId))
+	vehicleColor = color or pickColor(vehicleId)
 	local cf, vel = car:getCFrame(), car:getVelocity()
-	local nextCar = Car.new(Config, color or pickColor(vehicleId), assets, vehicleId)
+	local nextCar = Car.new(Config, vehicleColor, assets, vehicleId)
 	nextCar.model.Parent = Workspace
 	nextCar:teleport(cf + cf.UpVector * 0.5)
 	nextCar.chassis.AssemblyLinearVelocity = vel
@@ -272,31 +276,154 @@ local function timeLabel()
 	return string.format("%02d:%02d", math.floor(t), math.floor((t % 1) * 60))
 end
 
-local hudVisible = true
+---------------------------------------------------------------------------
+-- Interface: `app` is how the start screen, toolbar and settings read and
+-- change the game (keys are listed in UI/App.luau)
+---------------------------------------------------------------------------
+local started = false -- false while the start screen is up
 local statsVisible = false
-local actions = {
-	autodrive = function()
-		autodrive:setEnabled(not autodrive.enabled)
-		hud:toast(autodrive.enabled and "Autodrive on" or "Autodrive off")
+local speedometerOn = true
+local units = "km/h"
+local currentSection = nil
+
+local getters = {
+	vehicle = function()
+		return vehicleId
+	end,
+	color = function()
+		return vehicleColor
+	end,
+	season = function()
+		return environment.seasonAuto and "Auto" or environment.season
+	end,
+	seasonNow = function()
+		return environment.season
+	end,
+	weather = function()
+		return environment.weatherAuto and "Auto" or environment.weather.name
+	end,
+	weatherNow = function()
+		return environment.weather.name
+	end,
+	clock = function()
+		return Lighting.ClockTime
+	end,
+	dayCycle = function()
+		return Atmosphere.clockRunning
 	end,
 	camera = function()
-		hud:toast("Camera: " .. camera:cycle())
+		return camera:mode()
+	end,
+	autodrive = function()
+		return autodrive.enabled
+	end,
+	quality = function()
+		return qualityMode
+	end,
+	qualityNow = function()
+		return qualityName
+	end,
+	units = function()
+		return units
+	end,
+	speedometer = function()
+		return speedometerOn
+	end,
+	stats = function()
+		return statsVisible
+	end,
+}
+
+local setters = {
+	season = function(mode: string)
+		environment:setSeason(mode)
+	end,
+	weather = function(mode: string)
+		environment:setWeather(mode)
+	end,
+	clock = function(t: number)
+		Lighting.ClockTime = t
+	end,
+	dayCycle = function(on: boolean)
+		Atmosphere.clockRunning = on
+	end,
+	camera = function(name: string)
+		for _ = 1, #CameraController.Modes do
+			if camera:mode() == name then
+				break
+			end
+			camera:cycle()
+		end
+	end,
+	autodrive = function(on: boolean)
+		autodrive:setEnabled(on)
+	end,
+	quality = function(mode: string)
+		if mode ~= qualityMode then
+			qualityMode = mode
+			applyQuality()
+			manager:redecorate()
+		end
+	end,
+	units = function(name: string)
+		units = name
+		hud:setUnits(name)
+	end,
+	speedometer = function(on: boolean)
+		speedometerOn = on
+		hud:setSpeedometer(on)
+	end,
+	stats = function(on: boolean)
+		statsVisible = on
+		hud:setStats(on and "" or nil)
+	end,
+}
+
+local app = {
+	get = function(key: string)
+		return getters[key]()
+	end,
+	set = function(key: string, value)
+		setters[key](value)
+	end,
+	setVehicle = function(id: string, color: Color3?)
+		if id ~= vehicleId or color ~= vehicleColor then
+			switchVehicle(id, color)
+		end
 	end,
 	reset = function()
 		resetCar()
 		hud:toast("Back on the road")
 	end,
+	start = function(withAutodrive: boolean)
+		started = true
+		autodrive:setEnabled(withAutodrive)
+		hud:setVisible(true)
+		currentSection = nil -- show the region banner now
+	end,
+}
+
+local ui = App.new(playerGui, app, { hud = hud, input = input, seed = seed })
+
+-- keyboard and gamepad shortcuts (optional; everything is also clickable)
+local actions = {
+	autodrive = function()
+		setters.autodrive(not autodrive.enabled)
+		hud:toast(autodrive.enabled and "Autodrive on" or "Autodrive off")
+	end,
+	camera = function()
+		hud:toast("Camera: " .. camera:cycle())
+	end,
+	reset = app.reset,
 	time = function()
 		Atmosphere.nextPreset()
 		hud:toast("Time " .. timeLabel())
 	end,
-	hud = function()
-		hudVisible = not hudVisible
-		hud:setVisible(hudVisible)
+	photo = function()
+		ui:togglePhoto()
 	end,
 	stats = function()
-		statsVisible = not statsVisible
-		hud:setStats(statsVisible and "" or nil)
+		setters.stats(not statsVisible)
 	end,
 	vehicle = function()
 		switchVehicle()
@@ -308,45 +435,24 @@ local actions = {
 		hud:toast("Weather: " .. environment:cycleWeather())
 	end,
 	menu = function()
-		menu:toggle()
+		ui:toggleSettings()
+	end,
+	back = function()
+		ui:back()
+	end,
+	confirm = function()
+		ui:confirm()
 	end,
 }
 for name, fn in actions do
-	input:on(name, fn)
+	input:on(name, function()
+		-- on the start screen only Enter does anything
+		if started or name == "confirm" then
+			fn()
+			ui:refresh()
+		end
+	end)
 end
-
-menu:addRow("Vehicle", function()
-	return Vehicles.get(vehicleId).name
-end, function()
-	switchVehicle()
-end)
-menu:addRow("Season", function()
-	return environment.seasonAuto and ("Auto (" .. environment.season .. ")") or environment.season
-end, actions.season)
-menu:addRow("Weather", function()
-	return environment.weatherAuto and ("Auto (" .. environment.weather.name .. ")") or environment.weather.name
-end, actions.weather)
-menu:addRow("Time of day", timeLabel, actions.time)
-menu:addRow("Day cycle", function()
-	return Atmosphere.clockRunning and "On" or "Paused"
-end, function()
-	Atmosphere.clockRunning = not Atmosphere.clockRunning
-end)
-menu:addRow("Quality", function()
-	return qualityMode == "Auto" and ("Auto (" .. qualityName .. ")") or qualityMode
-end, function()
-	qualityMode = qualityMode == "Auto" and Config.Quality.Order[1] or (qualityMode == Config.Quality.Order[#Config.Quality.Order] and "Auto" or Quality.next(Config, qualityMode))
-	applyQuality()
-	manager:redecorate()
-end)
-menu:addRow("Camera", function()
-	return camera:mode()
-end, function()
-	camera:cycle()
-end)
-menu:addRow("Autodrive", function()
-	return autodrive.enabled and "On" or "Off"
-end, actions.autodrive)
 
 if Config.Sounds.Ambience ~= "" then
 	local ambience = Instance.new("Sound")
@@ -362,10 +468,14 @@ end
 ---------------------------------------------------------------------------
 local function physicsStep(dt: number)
 	local throttle, steer, handbrake = input:read()
-	if autodrive.enabled then
+	if not started then
+		-- parked behind the start screen
+		throttle, steer, handbrake = 0, 0, true
+	elseif autodrive.enabled then
 		if math.abs(throttle) > 0.2 or math.abs(steer) > 0.2 then
 			autodrive:setEnabled(false)
 			hud:toast("Autodrive off")
+			ui:refresh()
 		else
 			local cf = car:getCFrame()
 			throttle, steer = autodrive:compute(manager:toWorld(cf.Position), cf.LookVector, cf.RightVector, car.speed, car:maxSteer())
@@ -393,10 +503,10 @@ local report = Shared:WaitForChild("ReportDistance", 5)
 local traveled = 0
 local lastS = rc.SpawnDistance
 local lastReport = os.clock()
-local currentSection = nil
 local upsideDown = 0
 local frames, lastStats = 0, os.clock()
 local infoTimer = 0
+local uiTimer = 0
 
 RunService.Heartbeat:Connect(function(dt)
 	local cf = car:getCFrame()
@@ -448,7 +558,13 @@ RunService.Heartbeat:Connect(function(dt)
 	infoTimer -= dt
 	if infoTimer <= 0 then
 		infoTimer = 1
-		hud:setInfo(string.format("%s  -  %s  -  %s", environment.season, environment.weather.name, timeLabel()))
+		hud:setInfo(string.format("%s  ·  %s  ·  %s", environment.season, environment.weather.name, timeLabel()))
+	end
+	-- keep the toolbar and menus in step with auto seasons, weather and time
+	uiTimer -= dt
+	if uiTimer <= 0 then
+		uiTimer = 0.5
+		ui:refresh()
 	end
 
 	frames += 1

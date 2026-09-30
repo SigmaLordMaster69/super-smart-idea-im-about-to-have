@@ -1,129 +1,182 @@
 --[[
 	SettingsMenu
 	------------
-	A small panel (gear button top-right, or M) with one row per setting.
-	Clicking a row cycles its value. Rows are registered by the client:
-	  menu:addRow("Season", function() return label end, function() cycle() end)
+	The settings panel, opened from the toolbar's Settings button (or M).
+	Every option is a chip or a switch you click directly: graphics
+	quality, camera, speed units, speedometer, stats overlay and the
+	day/night cycle. It sits on the right above the toolbar and scrolls when
+	the screen is short.
+
+	  SettingsMenu.new(root, {
+	      state = { get, set },        -- see UI/App.luau for the keys
+	      view = view,                 -- from Kit.screen
+	      device = Kit.device(),
+	      onClose = function(),
+	      onShortcuts = function()?,   -- adds a "shortcuts" button
+	  })
 ]]
 
-local Players = game:GetService("Players")
+local UI = script.Parent.UI
+local Theme = require(UI.Theme)
+local Kit = require(UI.Kit)
+local Controls = require(UI.Controls)
 
 local SettingsMenu = {}
 SettingsMenu.__index = SettingsMenu
 
-local rgb = Color3.fromRGB
+local WIDTH = 380
+local HEADER_H = 42
+local SECTION_GAP = 18
+local LEFT = Enum.TextXAlignment.Left
 
-local function corner(parent, r)
-	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, r)
-	c.Parent = parent
-end
-
-function SettingsMenu.new()
+function SettingsMenu.new(parent: Instance, spec)
 	local self = setmetatable({}, SettingsMenu)
-	self.rows = {}
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "InfiniteRoadSettings"
-	gui.ResetOnSpawn = false
-	gui.DisplayOrder = 5
-	gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
-	self.gui = gui
+	self.visible = false
+	self.widgets = {}
+	self.view = spec.view
+	self.getter = spec.state.get
+	local state = spec.state
+	local device = spec.device or Kit.device()
 
-	local gear = Instance.new("TextButton")
-	gear.Name = "Gear"
-	gear.AnchorPoint = Vector2.new(1, 0)
-	gear.Position = UDim2.new(1, -16, 0, 14)
-	gear.Size = UDim2.fromOffset(44, 44)
-	gear.BackgroundColor3 = rgb(20, 24, 30)
-	gear.BackgroundTransparency = 0.35
-	gear.Text = "\u{2699}"
-	gear.TextColor3 = Color3.new(1, 1, 1)
-	gear.TextSize = 26
-	gear.Font = Enum.Font.GothamBold
-	gear.AutoButtonColor = true
-	gear.Parent = gui
-	corner(gear, 10)
-
-	local panel = Instance.new("Frame")
-	panel.Name = "Panel"
-	panel.AnchorPoint = Vector2.new(1, 0)
-	panel.Position = UDim2.new(1, -16, 0, 66)
-	panel.Size = UDim2.fromOffset(300, 10)
-	panel.AutomaticSize = Enum.AutomaticSize.Y
-	panel.BackgroundColor3 = rgb(18, 22, 28)
-	panel.BackgroundTransparency = 0.2
-	panel.Visible = false
-	panel.Parent = gui
-	corner(panel, 12)
-	local pad = Instance.new("UIPadding")
-	pad.PaddingTop = UDim.new(0, 10)
-	pad.PaddingBottom = UDim.new(0, 10)
-	pad.PaddingLeft = UDim.new(0, 10)
-	pad.PaddingRight = UDim.new(0, 10)
-	pad.Parent = panel
-	local list = Instance.new("UIListLayout")
-	list.Padding = UDim.new(0, 6)
-	list.SortOrder = Enum.SortOrder.LayoutOrder
-	list.Parent = panel
+	local panel = Kit.panel(parent, {
+		Name = "Settings",
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, -Theme.Margin, 1, -Theme.ToolbarReserve),
+		Size = UDim2.fromOffset(WIDTH, 400),
+		BackgroundTransparency = 0.1,
+		Visible = false,
+		ZIndex = 5,
+	})
+	Kit.padding(panel, Theme.Pad)
 	self.panel = panel
+	self.popScale = Kit.new("UIScale", { Parent = panel })
 
-	gear.Activated:Connect(function()
-		self:toggle()
+	Kit.text(panel, {
+		Name = "Title",
+		Text = "Settings",
+		Font = Theme.FontBold,
+		TextSize = 18,
+		TextXAlignment = LEFT,
+		Size = UDim2.new(1, -40, 0, 30),
+	})
+	Kit.button(panel, {
+		Name = "Close",
+		Text = "×",
+		TextSize = 22,
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.fromScale(1, 0),
+		Size = UDim2.fromOffset(30, 30),
+	}, spec.onClose)
+
+	local body = Kit.scroll(panel, {
+		Name = "Body",
+		Position = UDim2.fromOffset(0, HEADER_H),
+		Size = UDim2.new(1, 0, 1, -HEADER_H),
+	})
+	Kit.list(body, false, SECTION_GAP)
+	Kit.padding(body, 0, 6, 2, 0) -- room for the scroll bar
+
+	local contentH = -SECTION_GAP
+	local function add(height: number)
+		contentH += height + SECTION_GAP
+	end
+	local function track(widget)
+		table.insert(self.widgets, widget)
+		return widget
+	end
+
+	local _, h = Kit.section(body, "Graphics quality", 1, function(frame)
+		local chips = track(Controls.quality(frame, state, 1))
+		self.qualityHint = Kit.text(frame, {
+			Name = "Hint",
+			Font = Theme.FontLight,
+			TextSize = 12,
+			TextColor3 = Theme.TextDim,
+			TextXAlignment = LEFT,
+			Size = UDim2.new(1, 0, 0, 14),
+			LayoutOrder = 2,
+		})
+		return chips.height + 8 + 14
 	end)
+	add(h)
+	_, h = Kit.section(body, "Camera", 2, function(frame)
+		return track(Controls.camera(frame, state)).height
+	end)
+	add(h)
+	_, h = Kit.section(body, "Speed units", 3, function(frame)
+		return track(Controls.units(frame, state)).height
+	end)
+	add(h)
+
+	local switches = Kit.new("Frame", {
+		Name = "Switches",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, Theme.ToggleHeight * 3),
+		LayoutOrder = 4,
+		Parent = body,
+	})
+	Kit.list(switches, false, 0)
+	track(Controls.speedometer(switches, state, 1))
+	track(Controls.stats(switches, state, 2))
+	track(Controls.dayCycle(switches, state, 3))
+	add(Theme.ToggleHeight * 3)
+
+	if spec.onShortcuts and (device.keyboard or device.gamepad) then
+		Kit.button(body, {
+			Name = "Shortcuts",
+			Text = "Keyboard and gamepad shortcuts",
+			TextSize = 14,
+			Size = UDim2.new(1, 0, 0, 38),
+			LayoutOrder = 5,
+		}, spec.onShortcuts)
+		add(38)
+	end
+
+	self.contentHeight = contentH + 2
+	self.view.onResize(function()
+		self:_fit()
+	end)
+	self:_fit()
 	return self
 end
 
+-- As tall as the content, but never taller than the space above the toolbar.
+function SettingsMenu:_fit()
+	local available = self.view.height - Theme.ToolbarReserve - Theme.Margin
+	local wanted = self.contentHeight + HEADER_H + Theme.Pad * 2
+	self.panel.Size = UDim2.fromOffset(WIDTH, math.max(160, math.min(wanted, available)))
+end
+
+function SettingsMenu:open()
+	self.visible = true
+	self:_fit()
+	self.panel.Visible = true
+	self.popScale.Scale = 0.94
+	Kit.tween(self.popScale, { Scale = 1 }, Theme.Fast)
+	self:refresh()
+end
+
+function SettingsMenu:close()
+	self.visible = false
+	self.panel.Visible = false
+end
+
 function SettingsMenu:toggle()
-	self.panel.Visible = not self.panel.Visible
-	if self.panel.Visible then
-		self:refresh()
+	if self.visible then
+		self:close()
+	else
+		self:open()
 	end
 end
 
--- label: function() -> current value text; action: function() when clicked
-function SettingsMenu:addRow(title: string, label, action)
-	local button = Instance.new("TextButton")
-	button.Name = title
-	button.LayoutOrder = #self.rows + 1
-	button.Size = UDim2.new(1, 0, 0, 38)
-	button.BackgroundColor3 = rgb(40, 46, 56)
-	button.BackgroundTransparency = 0.1
-	button.AutoButtonColor = true
-	button.Text = ""
-	button.Parent = self.panel
-	corner(button, 8)
-	local name = Instance.new("TextLabel")
-	name.BackgroundTransparency = 1
-	name.Position = UDim2.fromOffset(12, 0)
-	name.Size = UDim2.new(0.45, 0, 1, 0)
-	name.Font = Enum.Font.Gotham
-	name.TextSize = 15
-	name.TextColor3 = rgb(190, 198, 210)
-	name.TextXAlignment = Enum.TextXAlignment.Left
-	name.Text = title
-	name.Parent = button
-	local value = Instance.new("TextLabel")
-	value.BackgroundTransparency = 1
-	value.AnchorPoint = Vector2.new(1, 0)
-	value.Position = UDim2.new(1, -12, 0, 0)
-	value.Size = UDim2.new(0.55, -12, 1, 0)
-	value.Font = Enum.Font.GothamBold
-	value.TextSize = 15
-	value.TextColor3 = Color3.new(1, 1, 1)
-	value.TextXAlignment = Enum.TextXAlignment.Right
-	value.Text = label()
-	value.Parent = button
-	local row = { button = button, value = value, label = label }
-	table.insert(self.rows, row)
-	button.Activated:Connect(function()
-		action()
-		self:refresh()
-	end)
-end
-
 function SettingsMenu:refresh()
-	for _, row in self.rows do
-		row.value.Text = row.label()
+	for _, widget in self.widgets do
+		widget:refresh()
+	end
+	local hint = self.getter("quality") == "Auto" and ("Auto picked " .. tostring(self.getter("qualityNow")) .. " for this device")
+		or "Higher shows more of the world but needs a faster device"
+	if self.qualityHint.Text ~= hint then
+		self.qualityHint.Text = hint
 	end
 end
 
