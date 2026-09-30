@@ -36,6 +36,8 @@ local WorkerPool = require(script.WorkerPool)
 local Vehicles = require(script.Vehicles)
 local Environment = require(script.Environment)
 local Ambience = require(script.Ambience)
+local SoundUtil = require(script.SoundUtil)
+local Kit = require(script.UI.Kit)
 local App = require(script.UI.App)
 
 local player = Players.LocalPlayer
@@ -459,6 +461,14 @@ end
 -- birds, surf or a breeze depending on the landscape
 local ambience = Ambience.new(Config, Workspace.CurrentCamera)
 
+-- a soft click for the interface
+local click = SoundUtil.make(Config.Sounds.UIClick, nil, 0.5, false)
+if click then
+	click.Playing = false
+	click.Parent = game:GetService("SoundService")
+	Kit.setClickSound(click)
+end
+
 ---------------------------------------------------------------------------
 -- Per-frame
 ---------------------------------------------------------------------------
@@ -474,7 +484,7 @@ local function physicsStep(dt: number)
 			ui:refresh()
 		else
 			local cf = car:getCFrame()
-			throttle, steer = autodrive:compute(manager:toWorld(cf.Position), cf.LookVector, cf.RightVector, car.speed, car:maxSteer())
+			throttle, steer = autodrive:compute(manager:toWorld(cf.Position), cf.LookVector, cf.RightVector, car.speed, car:maxSteer(), car:wheelbase())
 			handbrake = false
 		end
 	end

@@ -181,15 +181,27 @@ Config.Car = {
 	MaxSteerLow = math.rad(34),
 	MaxSteerHigh = math.rad(6.5),
 	SteerSpeed = 3.2, -- how fast the wheels turn (per second, 0..1 of max)
+	-- Full lock never asks the tyres for more than this share of their grip,
+	-- so steering hard at speed (or in the rain) turns as tight as the car
+	-- can, instead of sliding. Set it to 0 to turn the limit off.
+	SteerGrip = 0.8,
 
 	SuspensionLength = 2.6,
 	SuspensionFrequency = 2.3, -- Hz (sets the sag: g / (2 pi f)^2 ~ 0.9 studs)
 	SuspensionDamping = 0.55, -- damping ratio
-	WheelRadius = 1.6,
+	WheelRadius = 1.25,
 	Grip = 1.35, -- friction coefficient
 	HandbrakeGrip = 0.45,
-	RearGrip = 1.05, -- rear grip multiplier (above 1 = stable, below = tail-happy)
+	RearGrip = 1.08, -- rear grip multiplier (above 1 = stable, below = tail-happy)
 	StabilityAssist = 1.5, -- yaw correction rate (1/s), 0 = off
+	Drag = 1.6e-4, -- air drag (per unit mass), a gentle cap on top speed
+
+	-- physics layout (chassis space: the collision box is centred on 0,0,0)
+	ChassisSize = Vector3.new(6, 2.2, 15), -- invisible collision box
+	HalfTrack = 2.8, -- wheel centre to centre line
+	HalfBase = 4.9, -- axle to chassis centre
+	AttachY = -0.2, -- where the suspension rays start
+	ForceY = -0.5, -- height of the tyre forces (below the centre of mass gives body roll)
 
 	Colors = {
 		Color3.fromRGB(200, 58, 48),
@@ -201,7 +213,7 @@ Config.Car = {
 		Color3.fromRGB(150, 196, 214),
 	},
 
-	BodyLength = 15, -- premade car bodies are scaled to this length
+	BodyLength = 17, -- premade car bodies are scaled to this length
 
 	AutoDriveSpeed = 95, -- cruise speed on straights
 	AutoDriveLateralAccel = 70, -- studs/s^2 it is willing to pull in corners
@@ -209,26 +221,30 @@ Config.Car = {
 
 -- Motorcycle: overrides on top of Config.Car. The physics still use four
 -- corners (HalfTrack wide, like invisible outriggers) so it cannot tip over;
--- the bike you see has two wheels and leans into corners.
+-- the bike you see has two wheels and leans into corners. Tyre forces act
+-- at the centre of mass (ForceY 0), so cornering and braking never tip the
+-- physics box and every corner keeps its load.
 Config.Motorcycle = {
-	ChassisSize = Vector3.new(3.2, 2, 8.5),
-	HalfTrack = 2.1,
-	HalfBase = 3.4,
-	WheelRadius = 1.35,
-	SuspensionLength = 2.2,
-	SuspensionFrequency = 2.6,
-	TopSpeed = 175,
-	Acceleration = 58,
+	ChassisSize = Vector3.new(3.6, 2.6, 7),
+	HalfTrack = 2.0,
+	HalfBase = 2.5,
+	WheelRadius = 1.1,
+	ForceY = 0,
+	SuspensionLength = 2.0,
+	SuspensionFrequency = 2.5,
+	TopSpeed = 170,
+	Acceleration = 56,
 	BrakeDeceleration = 120,
 	MaxSteerLow = math.rad(26),
 	MaxSteerHigh = math.rad(4.5),
 	SteerSpeed = 3.0,
-	Grip = 1.75,
+	SteerGrip = 0.7,
+	Grip = 1.5,
 	HandbrakeGrip = 0.9,
 	RearGrip = 1.2,
 	StabilityAssist = 3,
-	BodyLength = 8, -- premade bikes are scaled to this length
-	LeanMax = math.rad(42),
+	BodyLength = 7.4, -- premade bikes are scaled to this length
+	LeanMax = math.rad(45),
 	Colors = {
 		Color3.fromRGB(210, 40, 40),
 		Color3.fromRGB(30, 30, 34),
@@ -239,16 +255,41 @@ Config.Motorcycle = {
 }
 
 ---------------------------------------------------------------------------
--- Sounds: paste audio asset ids ("rbxassetid://123...") from the Toolbox.
--- Empty strings mean silence.
+-- Sounds. Swap in any audio ids you like from the Toolbox.
+-- An entry is "" (silence), "rbxassetid://id", or { Id = ..., Loop = { from,
+-- to } (seconds; for recordings where only the middle part loops cleanly),
+-- Gain = loudness factor }, or a list of those (one picked at random).
+-- The defaults are public audio from Roblox's licensed library (Pro Sound
+-- Effects, Roblox, Roblox Resources), checked against Roblox's asset API.
+-- Gains are rough loudness matches: adjust to taste after listening.
 ---------------------------------------------------------------------------
+local function rbx(id: number, loop, gain)
+	if not loop and not gain then
+		return "rbxassetid://" .. id
+	end
+	return { Id = "rbxassetid://" .. id, Loop = loop, Gain = gain }
+end
 Config.Sounds = {
-	Engine = "", -- looping engine hum, pitched up with speed
-	Wind = "", -- looping wind, louder with speed
-	Ambience = "", -- looping background (birds, waves...)
-	MotorcycleEngine = "", -- engine loop for the motorcycle (falls back to Engine)
-	Rain = "", -- looping rain, volume follows rain strength
-	Thunder = "", -- one-shot thunder clap after lightning
+	Engine = rbx(80317022777602), -- looping engine hum, pitched up with speed
+	Wind = rbx(9114057104, { 3.6, 29.82 }, 6), -- wind rush, louder with speed
+	MotorcycleEngine = rbx(9114895897, { 35.76, 40.66 }), -- engine loop for the bikes (falls back to Engine)
+	-- per vehicle engine loops (each falls back to MotorcycleEngine for
+	-- bikes, then Engine)
+	SportsEngine = rbx(9112952432, { 19.36, 34.54 }, 0.45), -- sports car (Jaguar E-Type)
+	PickupEngine = rbx(9125350177, { 6.62, 23.44 }, 4), -- pickup truck (Dodge Ram)
+	TruckEngine = rbx(9112736299, { 1.14, 20.24 }), -- tractor-trailer (Peterbilt)
+	SupermotoEngine = "", -- supermoto (single cylinder; none found, uses MotorcycleEngine)
+	SportbikeEngine = rbx(9114895897, { 35.76, 40.66 }), -- sportbike (inline four)
+	CruiserEngine = rbx(9114777891, { 6.74, 23.56 }, 0.6), -- cruiser (Harley V-twin)
+	Rain = rbx(1516791621, nil, 2), -- looping rain, volume follows rain strength
+	Thunder = { rbx(9116282544), rbx(9120016241), rbx(9120018873), rbx(9116282791) }, -- after lightning
+	Waterfall = rbx(9116496581), -- at every waterfall
+	-- landscape ambience (see Ambience.luau); Ambience plays everywhere instead if set
+	Birds = rbx(9116970949, nil, 3), -- forests, meadows, lakes, river valleys
+	Surf = rbx(9119676058, nil, 1.5), -- coast and ocean
+	Breeze = rbx(9113286969, { 4.44, 33.44 }, 4), -- mountains and canyons
+	Ambience = "",
+	UIClick = rbx(15675059323), -- buttons
 }
 
 ---------------------------------------------------------------------------

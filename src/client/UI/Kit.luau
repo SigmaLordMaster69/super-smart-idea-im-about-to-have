@@ -18,6 +18,19 @@ local Theme = require(script.Parent.Theme)
 
 local Kit = {}
 
+-- optional click sound for every button, chip and switch
+local clickSound: Sound? = nil
+function Kit.setClickSound(sound: Sound?)
+	clickSound = sound
+end
+function Kit.click()
+	if clickSound then
+		pcall(function()
+			game:GetService("SoundService"):PlayLocalSound(clickSound)
+		end)
+	end
+end
+
 local LEFT = Enum.TextXAlignment.Left
 local RIGHT = Enum.TextXAlignment.Right
 
@@ -177,7 +190,10 @@ function Kit.button(parent: Instance?, props: { [string]: any }?, onClick: (() -
 		Kit.tween(button, { BackgroundColor3 = base }, Theme.Fast)
 	end)
 	if onClick then
-		button.Activated:Connect(onClick)
+		button.Activated:Connect(function()
+			Kit.click()
+			onClick()
+		end)
 	end
 	return button
 end
@@ -276,6 +292,7 @@ function Kit.chips(parent: Instance, options, spec)
 			self:_paint(entry, Theme.Fast)
 		end)
 		button.Activated:Connect(function()
+			Kit.click()
 			spec.set(option.value)
 			self:refresh()
 		end)
@@ -372,6 +389,7 @@ function Kit.toggle(parent: Instance, spec)
 	Kit.round(knob)
 	local self = setmetatable({ getter = spec.get, frame = row, track = track, knob = knob, current = nil }, Toggle)
 	row.Activated:Connect(function()
+		Kit.click()
 		spec.set(not spec.get())
 		self:refresh()
 	end)

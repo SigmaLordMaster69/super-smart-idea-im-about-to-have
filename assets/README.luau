@@ -12,7 +12,9 @@
 	  Signs/CurveLeft  CurveRight  ChevronLeft  ChevronRight  Tunnel
 	        SpeedLimit  FallingRocks  Deer  Guide  Marker
 	  Road/GuardRail  Delineator  RoadEnd
-	  Car/Body  Motorcycle/Body
+	  Vehicles/Sedan  SportsCar  Pickup  Semi  Naked  Supermoto  Sportbike
+	           Cruiser   (each has a Body folder: one model per vehicle)
+	  Car/Body  Motorcycle/Body   (older slots: the Sedan and the Naked bike)
 
 	What happens to each model:
 	  * scripts, sounds, seats, humanoids, welds and constraints are removed
@@ -39,9 +41,15 @@
 	    rail. Its long side can point either way, it is turned for you. The
 	    car still collides with an invisible rail, so the model's own
 	    collision does not matter.
-	  * Car/Body: any car model. It is scaled to 15 studs long and welded
-	    onto the physics chassis. Parts named *wheel*, *tire*, *tyre* or *rim*
-	    are found and attached to the suspension so they spin and steer.
+	  * Vehicles/<Id>/Body: a model for that vehicle, nose towards -Z. It
+	    is scaled to the vehicle's length (sedan 17 studs, sports car 16,
+	    pickup 21, tractor unit 27, bikes 7.3 to 8.6) and welded onto the
+	    physics chassis. Parts named *wheel*, *tire*, *tyre* or *rim* are
+	    found and attached to the suspension so they spin and steer. For
+	    the Semi, put in the tractor unit only: the trailer stays built-in.
+	    On bikes the rider stays and leans with your model.
+	  * Car/Body and Motorcycle/Body still work: they are used for the
+	    Sedan and the Naked bike when their Vehicles folder is empty.
 	  * The Output window prints which folders were picked up when you press
 	    Play.
 ]]

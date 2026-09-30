@@ -306,7 +306,9 @@ for _ = 1, 120 do
 	bike:render(1 / 60)
 end
 check(math.abs(bike.lean) < math.rad(1), "bike stands up again when stopped")
-check(bike:maxSteer() == Config.Motorcycle.MaxSteerLow, "bike steering lock at standstill")
+check(bike:steerLock() == Config.Motorcycle.MaxSteerLow, "bike steering lock at standstill")
+-- autodrive gets the lock for its 9.8 stud reference wheelbase
+check(math.abs(bike:maxSteer() - Config.Motorcycle.MaxSteerLow) < 1e-9, "bike steering lock at standstill")
 
 local car = Car.new(Config, Color3.new(0, 0, 1), nil, "Car")
 check(car.kind == "Car" and car.wheels[1].part ~= nil, "car still builds")

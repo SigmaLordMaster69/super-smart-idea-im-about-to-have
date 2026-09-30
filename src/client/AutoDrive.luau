@@ -32,9 +32,10 @@ end
 	carPos, carLook, carRight: world-space car frame
 	speed: forward speed (studs/s)
 	maxSteer: steering lock (radians) at the current speed
+	wheelbase: the vehicle's wheelbase (studs)
 	Returns throttle, steer in -1..1.
 ]]
-function AutoDrive:compute(carPos: Vector3, carLook: Vector3, carRight: Vector3, speed: number, maxSteer: number)
+function AutoDrive:compute(carPos: Vector3, carLook: Vector3, carRight: Vector3, speed: number, maxSteer: number, wheelbase: number?)
 	local cfg = self.config
 	local road = self.world.road
 	local s = road:project(carPos.X, carPos.Z)
@@ -51,7 +52,7 @@ function AutoDrive:compute(carPos: Vector3, carLook: Vector3, carRight: Vector3,
 	local side = to:Dot(carRight)
 	local alpha = atan2(side, fwd)
 	local dist = sqrt(fwd * fwd + side * side)
-	local delta = atan(2 * WHEELBASE * math.sin(alpha) / max(dist, 1))
+	local delta = atan(2 * (wheelbase or WHEELBASE) * math.sin(alpha) / max(dist, 1))
 	local steer = clamp(delta / max(maxSteer, 0.01), -1, 1)
 
 	-- speed limit from the curvature ahead

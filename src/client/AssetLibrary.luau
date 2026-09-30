@@ -13,7 +13,9 @@
 	    Signs/Tunnel  Signs/SpeedLimit  Signs/FallingRocks  Signs/Deer
 	    Signs/Guide  Signs/Marker
 	    Road/GuardRail  Road/Delineator  Road/RoadEnd
-	    Car/Body  Motorcycle/Body
+	    Vehicles/<Id>/Body   one per vehicle: Sedan, SportsCar, Pickup, Semi,
+	                         Naked, Supermoto, Sportbike, Cruiser
+	    Car/Body  Motorcycle/Body   older slots for the Sedan and the Naked bike
 
 	Several models in one folder become random variants. Empty folders keep
 	using the built-in procedural version.
@@ -32,6 +34,8 @@
 	  HeightOffset (number) studs to raise (+) or sink (-) the model
 	  Collide (bool)        whether the model blocks the car
 ]]
+
+local Vehicles = require(script.Parent.Vehicles)
 
 local AssetLibrary = {}
 AssetLibrary.__index = AssetLibrary
@@ -202,11 +206,26 @@ local function findFolder(root: Instance, path: string): Instance?
 	return node
 end
 
+-- The first model (or part) in a slot folder.
+local function slotSource(folder: Instance?): Instance?
+	if not folder then
+		return nil
+	end
+	for _, child in folder:GetChildren() do
+		if child:IsA("Model") or child:IsA("BasePart") then
+			return child
+		end
+	end
+	return nil
+end
+
 function AssetLibrary.new(root: Instance?)
 	local self = setmetatable({}, AssetLibrary)
 	self.sets = {}
 	self.partCounts = {}
 	self.summary = {}
+	-- vehicle id -> { source = model, folder = slot folder }
+	self.vehicleBodies = {}
 	if not root then
 		return self
 	end
@@ -220,17 +239,24 @@ function AssetLibrary.new(root: Instance?)
 	if rail then
 		self:_loadRail(rail)
 	end
+	-- vehicle bodies: Vehicles/<Id>/Body, plus the older Car/Body (the
+	-- sedan) and Motorcycle/Body (the naked bike)
+	for _, id in Vehicles.Order do
+		local path = "Vehicles/" .. id .. "/Body"
+		local f = findFolder(root, path)
+		local source = slotSource(f)
+		if source then
+			self.vehicleBodies[id] = { source = source, folder = f }
+			table.insert(self.summary, path)
+		end
+	end
 	for _, slot in { { "Car/Body", "car" }, { "Motorcycle/Body", "bike" } } do
 		local f = findFolder(root, slot[1])
-		if f then
-			for _, child in f:GetChildren() do
-				if child:IsA("Model") or child:IsA("BasePart") then
-					self[slot[2] .. "Source"] = child
-					self[slot[2] .. "Folder"] = f
-					table.insert(self.summary, slot[1])
-					break
-				end
-			end
+		local source = slotSource(f)
+		if source then
+			self[slot[2] .. "Source"] = source
+			self[slot[2] .. "Folder"] = f
+			table.insert(self.summary, slot[1])
 		end
 	end
 	return self

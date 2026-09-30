@@ -19,7 +19,8 @@ On top of that:
 - **Weather**: clear, cloudy, rain, storm (lightning bolts, screen flash, delayed thunder), fog and snow. It blends smoothly, and in Auto mode it changes every few minutes with odds that suit the season
 - **Wet roads**: asphalt darkens and turns reflective in the rain, tyres throw up spray, grip drops, and the road dries out afterwards
 - **Sky**: dynamic clouds, sun rays, and colour grading that turns warm at sunrise and sunset and cool at night
-- **Car or motorcycle**: the bike leans into corners, and its rider is your own avatar
+- **Eight vehicles**: sedan, sports car, pickup truck and an articulated tractor-trailer; naked bike, supermoto, sportbike and cruiser. Bikes lean into corners with your own avatar as the rider
+- **Sound**: engines per vehicle, wind rush, rain, thunder, waterfalls, and birds, surf or a breeze depending on the landscape (licensed Roblox library audio, ready to go)
 - **Click-based interface**: a start screen to pick your vehicle, paint, season, weather and time; a toolbar with popovers for everything while you drive; a settings panel; photo mode
 
 It also includes a slowroads-style **autodrive**, chase, hood and **cinematic roadside** cameras, a day/night cycle, and a "km driven" leaderboard.
@@ -111,14 +112,14 @@ Everything the game builds from parts can be replaced by premade models from the
    | `Signs/CurveLeft`, `CurveRight`, `ChevronLeft`, `ChevronRight`, `Tunnel`, `SpeedLimit`, `FallingRocks`, `Deer`, `Guide`, `Marker` | road sign models (front facing -Z) | "road sign pack", "traffic signs" |
    | `Road/GuardRail` | one straight guard rail segment, repeated along every rail | "guard rail", "highway barrier" |
    | `Road/Delineator`, `Road/RoadEnd` | roadside post, barrier | "road post", "road barrier" |
-   | `Car/Body` | any car model, nose towards -Z | "car model", "low poly car" |
-   | `Motorcycle/Body` | any motorbike model, front towards -Z | "motorcycle", "motorbike" |
+   | `Vehicles/<Id>/Body` (`Sedan`, `SportsCar`, `Pickup`, `Semi`, `Naked`, `Supermoto`, `Sportbike`, `Cruiser`) | a model for that vehicle, nose towards -Z (for `Semi` the tractor; the trailer stays built-in) | "car model", "pickup truck", "motorcycle" |
+   | `Car/Body`, `Motorcycle/Body` | older slots, still used for the sedan and the naked bike | |
 
 3. Press Play. The Output window prints which slots were picked up.
 
 Each model is **cleaned** before use: scripts, sounds, seats, humanoids, welds and constraints are removed, so scripts inside free models never run. It is then anchored, pivoted at its base, and auto-scaled (trees 18–48 studs, plants, rocks; signs only if way off).
 
-A car body is scaled to 15 studs and welded onto the physics chassis. Parts named *wheel/tire/tyre/rim* are found and attached to the suspension, so they spin and steer, and the collision box resizes to fit the body. A motorcycle body is scaled to 8 studs. Its front and rear wheel parts spin (the front one also steers), the whole bike leans, and the rider stays on top.
+A car body is scaled to that vehicle's length (`BodyLength`, e.g. 17 studs for the sedan) and welded onto the physics chassis. Parts named *wheel/tire/tyre/rim* are found and attached to the suspension, so they spin and steer, and the collision box resizes to fit the body. A motorcycle body is scaled to its bike's length. Its front and rear wheel parts spin (the front one also steers), the whole bike leans, and the rider stays on top.
 
 Empty slots keep the built-in version. You can tweak individual models with attributes, set on the model or on its slot folder:
 
@@ -132,12 +133,14 @@ Empty slots keep the built-in version. You can tweak individual models with attr
 
 Terrain textures come from Roblox materials, so a `MaterialVariant` pack in **MaterialService** (e.g. realistic grass, rock or sand) restyles the whole world too.
 
-**Sounds:** paste audio ids from the Toolbox into `Config.Sounds`:
-- `Engine`, `MotorcycleEngine`: the pitch follows your speed.
+**Sounds:** `Config.Sounds` comes filled with public audio from Roblox's licensed library (Pro Sound Effects, Roblox, Roblox Resources), each id checked against Roblox's asset API. Swap in your own any time. An entry is an id, or `{ Id = ..., Loop = { from, to }, Gain = n }` for recordings where only the middle part loops cleanly, or a list to pick from at random:
+- `Engine`, `MotorcycleEngine` and one per vehicle (`SportsEngine`, `PickupEngine`, `TruckEngine`, `SupermotoEngine`, `SportbikeEngine`, `CruiserEngine`): the pitch follows your speed.
 - `Wind`: the volume follows your speed.
-- `Rain`: the volume follows the rain, and it is muffled in tunnels.
-- `Thunder`: plays after each lightning strike, delayed by its distance.
-- `Ambience`: background loop.
+- `Rain`: follows the rain, muffled in tunnels. `Thunder`: a random clap after each lightning strike, delayed by its distance.
+- `Waterfall`: at every waterfall. `UIClick`: interface buttons.
+- `Birds`, `Surf`, `Breeze`: cross-fade with the landscape (quieter at night and in the rain). `Ambience`, if set, plays everywhere instead.
+
+The loudness `Gain`s are rough matches between very differently recorded files; adjust them after a listen.
 
 **Particle textures:** rain, snow and leaves use built-in engine textures. Paste your own image ids into `Config.Textures` for nicer raindrops or leaf shapes.
 
@@ -183,7 +186,9 @@ Every client generates its own copy of the world from a **shared seed** that the
 ### The car (`Car.luau`, `Motorcycle.luau`)
 A raycast-suspension car. Each wheel casts a ray, and a spring/damper plus tyre friction are applied through a VectorForce. Grip is limited by a friction circle, steering lock shrinks with speed, the handbrake lets the rear slide, the car holds itself on hills when stopped, and there are headlights (at night) and brake lights. Autodrive steers with pure pursuit and slows for bends ahead based on their curvature.
 
-The motorcycle uses the same physics with a narrow footprint and its own tuning (`Config.Motorcycle`). Its four ray corners act like invisible outriggers, so it can't fall over. What you see hangs off a "lean root" that tilts into corners by `atan(speed × yaw rate / g)` around the tyre contact line. The rider is a posed clone of your R15 avatar, or a helmeted blocky rider if that isn't possible. Tyre grip follows the season and the road wetness.
+Every vehicle is a spec in `Vehicles.luau` (name, paint colours, tuning on top of `Config.Car` / `Config.Motorcycle`, camera, engine sound) with its body in `VehicleBodies/`. Springs, dampers and tyre forces follow the load on each corner; damping is capped to what one frame can handle, so handling stays stable at 30 FPS; steering lock never asks for more than a share of the available grip (`SteerGrip`, lower in the wet); and a stability assist counters spins. The tractor-trailer's trailer is a second body on a ball-socket fifth wheel with its own tandem axle, so it articulates through bends. `lune run tools/test_vehicles handling` prints each vehicle's top speed, acceleration, cornering, wet grip and lane-change behaviour from a simulation of the same force model.
+
+The motorcycles use the same physics with a narrow footprint and their own tuning. Its four ray corners act like invisible outriggers, so it can't fall over. What you see hangs off a "lean root" that tilts into corners by `atan(speed × yaw rate / g)` around the tyre contact line. The rider is a posed clone of your R15 avatar, or a helmeted blocky rider if that isn't possible. Tyre grip follows the season and the road wetness.
 
 ### Project layout
 ```
@@ -205,7 +210,8 @@ src/client/     StarterPlayerScripts.InfiniteRoadClient
   GenWorker/           Actor + Worker script (parallel terrain sampling)
   Weather.luau, Seasons.luau, Environment.luau   weather, seasons, auto modes
   Waterfalls.luau      waterfalls where water runs off an edge
-  Vehicles.luau        vehicle catalogue (ids, names, tuning, colours)
+  Vehicles.luau        vehicle catalogue (ids, names, tuning, colours, cameras, sounds)
+  VehicleBodies/       one body per vehicle plus a shared kit (wheels, lights, glass)
   Car.luau, Motorcycle.luau, AutoDrive.luau, CameraController.luau
   Input.luau, Hud.luau, SettingsMenu.luau, Quality.luau, Atmosphere.luau
   UI/                  start screen, toolbar, popovers, vehicle picker, theme
@@ -229,7 +235,8 @@ Everything lives in `src/shared/Config.luau`. The most useful settings:
 | `Regions.*.Weight` / `Length` | how often each region appears and how long it lasts |
 | `Decor.Density` | trees per region |
 | `Quality.Default` and the presets | `Auto` or a preset name. Each preset sets view distance, tree density and shadows, parallel workers (0 turns them off) and the frame budget range |
-| `Car.*`, `Motorcycle.*` | top speed, acceleration, grip, suspension; `Motorcycle.LeanMax` caps the lean angle |
+| `Car.*`, `Motorcycle.*` | base tuning: top speed, acceleration, grip, suspension, `SteerGrip`; `Motorcycle.LeanMax` caps the lean angle |
+| `Vehicles.luau` specs | per-vehicle tuning overrides, paint colours, camera distance, engine sound |
 | `Weather.Start`, `Seasons.Start` | `Auto`, or lock one weather / season |
 | `Weather.MinDuration`/`MaxDuration`, `Seasons.CycleMinutes` | how often the weather and the season change in Auto mode |
 | `Sky.DayLengthMinutes` | 0 freezes time |
@@ -245,6 +252,7 @@ lune run tools/check_syntax                 # every source file compiles; the pl
 lune run tools/test_road [seed] [studs]     # road invariants: monotonic X, min radius, max grade, flags, determinism, projection
 lune run tools/test_chunks [seed]           # full chunk pipeline: voxels, road, tunnels, bridges, decoration, rebase
 lune run tools/test_assets                  # fake asset packs: cleaning, scaling, placement, guard rails, car + bike bodies and wheels
+lune run tools/test_vehicles [handling]     # every vehicle: interface, part budgets, z-fighting, wheels, trailer, driving; 'handling' prints the simulation table
 lune run tools/test_scenic [seed]           # seasons (snow, ice, tree styles), weather/environment, motorcycle, parallel worker path, waterfalls, ocean
 lune run tools/test_ui                      # builds and clicks through the whole interface (desktop, touch, gamepad sizes)
 lune run tools/test_props [seed]            # props and road furniture: z-fighting, hidden and floating parts, sign text, part budgets

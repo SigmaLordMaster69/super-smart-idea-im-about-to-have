@@ -108,10 +108,13 @@ function CameraController:update(dt: number, car)
 	end
 
 	local bike = car.kind == "Motorcycle"
+	-- per vehicle: chase distance and height, hood camera offset
+	local view = car.spec and car.spec.camera or {}
 	local mode = self:mode()
 	if mode == "Hood" then
-		-- on the bike: the rider's eyes, leaning with the bike
-		local target = bike and car.leanRoot and car.leanRoot.CFrame * CFrame.new(0, (car.seatTop or 0) + 3.1, 0.2) or cf * CFrame.new(0, 2.7, -2.2)
+		-- on the bike: the rider's eyes (above the seat), leaning with the bike
+		local hood = view.hood or (bike and Vector3.new(0, 3.1, 0.2) or Vector3.new(0, 2.7, -2.2))
+		local target = bike and car.leanRoot and car.leanRoot.CFrame * CFrame.new(Vector3.new(0, car.seatTop or 0, 0) + hood) or cf * CFrame.new(hood)
 		if self.pos then
 			target = cam.CFrame:Lerp(target, 1 - exp(-25 * dt))
 		end
@@ -138,13 +141,13 @@ function CameraController:update(dt: number, car)
 		self.pitch += (rad(12) - self.pitch) * (1 - exp(-2.5 * dt))
 	end
 	local heading = CFrame.Angles(0, self.yaw, 0):VectorToWorldSpace(self.heading)
-	local wantDist = ((bike and 12 or 17) + speed * 0.035) * self.zoom
+	local wantDist = ((view.distance or (bike and 12 or 17)) + speed * 0.035) * self.zoom
 	self.dist = self.dist and self.dist + (wantDist - self.dist) * (1 - exp(-4 * dt)) or wantDist
 	local dist = self.dist
 	-- Follow the car's position exactly: a lagging camera shows every uneven
 	-- physics step as the car shaking on screen. Only the rotation and the
 	-- suspension bounce (height) are smoothed.
-	local fy = carPos.Y + (bike and 2.4 or 3)
+	local fy = carPos.Y + (view.height or (bike and 2.4 or 3))
 	self.focusY = self.focusY and self.focusY + (fy - self.focusY) * (1 - exp(-10 * dt)) or fy
 	if math.abs(self.focusY - fy) > 12 then
 		self.focusY = fy
