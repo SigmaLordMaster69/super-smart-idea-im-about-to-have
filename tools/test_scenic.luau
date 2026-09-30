@@ -577,6 +577,54 @@ if oSec then
 	check(palms > 10, "palms grow on the ocean islands")
 end
 
+---------------------------------------------------------------------------
+-- 9. sounds: plain ids, loop regions, lists; region ambience
+---------------------------------------------------------------------------
+local SoundUtil = env.require("src/client/SoundUtil")
+local Ambience = env.require("src/client/Ambience")
+local sf = Instance.new("Folder")
+check(SoundUtil.make("", sf, 1, true) == nil, "empty sound id is silence")
+local plain = SoundUtil.make("rbxassetid://80317022777602", sf, 0.5, true)
+check(plain and plain.Looped and plain.Volume == 0.5 and not plain.PlaybackRegionsEnabled, "plain looping sound")
+local region = SoundUtil.make({ Id = "rbxassetid://9112952432", Loop = { 19.36, 34.54 }, Gain = 3 }, sf, 0.5, true)
+check(region and region.PlaybackRegionsEnabled and math.abs(region.LoopRegion.Min - 19.36) < 1e-6 and region.LoopRegion.Max > 34.5, "loop region set")
+check(region and math.abs(region.Volume - 1.5) < 1e-6, "gain applied")
+SoundUtil.setVolume(region, 5)
+check(region.Volume == 10, "volume capped at 10")
+local picks = {}
+for _ = 1, 40 do
+	local sId = SoundUtil.id(SoundUtil.pick({ "rbxassetid://1", { Id = "rbxassetid://2" } }))
+	picks[sId] = true
+end
+check(picks["rbxassetid://1"] and picks["rbxassetid://2"], "lists pick among their entries")
+
+local ambConfig = { Sounds = { Birds = "rbxassetid://9116970949", Surf = "rbxassetid://9119676058", Breeze = { Id = "rbxassetid://9114057104", Loop = { 3.6, 29.82 }, Gain = 6 } } }
+local amb = Ambience.new(ambConfig, sf)
+for _ = 1, 300 do
+	amb:step(1 / 30, "Forest", 0, 0, false)
+end
+check(amb.sounds.Birds.Volume > 0.35 and amb.sounds.Surf.Volume < 0.01, "birds in the forest")
+for _ = 1, 400 do
+	amb:step(1 / 30, "Ocean", 0, 0, false)
+end
+check(amb.sounds.Surf.Volume > 0.3 and amb.sounds.Birds.Volume < 0.05, "surf on the ocean")
+for _ = 1, 400 do
+	amb:step(1 / 30, "Canyon", 0, 0, true)
+end
+check(amb.sounds.Breeze.Volume > 0 and amb.sounds.Breeze.Volume < 0.4 * 6 * 0.35, "breeze in the canyon, muffled in a tunnel")
+
+local wFolder = Instance.new("Folder")
+local sw = Weather.new({
+	Weather = Config.Weather, Textures = Config.Textures, Road = Config.Road, Sky = Config.Sky,
+	Sounds = { Rain = "rbxassetid://1516791621", Thunder = { "rbxassetid://9116282544", { Id = "rbxassetid://9120016241" } } },
+}, { lighting = realLighting, parent = wFolder })
+check(sw.rainSound ~= nil and sw.thunder ~= nil, "rain loop and thunder list set up")
+sw:set("Storm", true)
+for _ = 1, 30 do
+	sw:step(1 / 30, camCF, vel, 12, nil, 1)
+end
+check(sw.rainSound.Volume > 0.3, "rain loop audible in a storm")
+
 if failures == 0 then
 	print("ALL SCENIC CHECKS PASSED")
 else

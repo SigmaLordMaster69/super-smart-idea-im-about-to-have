@@ -12,6 +12,8 @@
 	Waterfalls.build(data, sampler, origin, parent, frozen, sounds) -> count
 ]]
 
+local SoundUtil = require(script.Parent.SoundUtil)
+
 local Waterfalls = {}
 
 local rgb = Color3.fromRGB
@@ -270,14 +272,10 @@ function Waterfalls.build(data, sampler, origin: Vector3, parent: Instance, froz
 			spray.Rate = clamp(f.width * 1.2, 5, 40)
 			spray.Parent = baseHost
 			baseHost.Parent = model
-			if sounds and sounds.Waterfall and sounds.Waterfall ~= "" then
-				local s = Instance.new("Sound")
-				s.SoundId = sounds.Waterfall
-				s.Looped = true
-				s.Volume = clamp(height / 60, 0.2, 0.8)
+			local s = sounds and SoundUtil.make(sounds.Waterfall, nil, clamp(height / 60, 0.2, 0.8), true)
+			if s then
 				s.RollOffMaxDistance = 260
-				s.Playing = true -- starts once the chunk is in the world
-				s.Parent = baseHost
+				s.Parent = baseHost -- plays once the chunk is in the world
 			end
 		end
 		model.Parent = parent
