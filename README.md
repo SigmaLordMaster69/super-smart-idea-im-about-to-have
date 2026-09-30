@@ -20,7 +20,7 @@ On top of that:
 - **Wet roads**: asphalt darkens and turns reflective in the rain, tyres throw up spray, grip drops, and the road dries out afterwards
 - **Sky**: dynamic clouds, sun rays, and colour grading that turns warm at sunrise and sunset and cool at night
 - **Car or motorcycle**: the bike leans into corners, and its rider is your own avatar
-- **Settings menu** (gear button): vehicle, season, weather, time of day, quality, camera
+- **Click-based interface**: a start screen to pick your vehicle, paint, season, weather and time; a toolbar with popovers for everything while you drive; a settings panel; photo mode
 
 It also includes a slowroads-style **autodrive**, chase, hood and **cinematic roadside** cameras, a day/night cycle, and a "km driven" leaderboard.
 
@@ -63,22 +63,34 @@ If you copy the scripts into your own place instead:
 
 ## Controls
 
-| | Keyboard | Gamepad | Touch |
-|---|---|---|---|
-| Drive / brake / reverse | W / S (or arrows) | RT / LT | GAS / BRAKE |
-| Steer | A / D (or arrows) | Left stick | ◀ ▶ |
-| Handbrake | Space | A | |
-| Autodrive | F | X | AUTO |
-| Camera (chase, hood, cinematic) | C | Y | CAM |
-| Look around | Right-drag, wheel to zoom | Right stick | |
-| Put the car back on the road | R | B | RESET |
-| Time of day | T | D-pad up | |
-| Hide HUD | H | D-pad down | |
-| Car / motorcycle | V | D-pad left | menu |
-| Season (Auto, Spring, Summer, Autumn, Winter) | N | | menu |
-| Weather (Auto, Clear, Cloudy, Rain, Storm, Fog, Snow) | G | D-pad right | menu |
-| Settings menu | M or the ⚙ button | Select | ⚙ |
-| Stats overlay (FPS, chunks, workers, frame budget) | F3 | | |
+Everything is clickable, or tappable on a phone or tablet:
+
+- **Start screen** (after loading, over the blurred world): pick a vehicle and its paint, the season, weather and time of day, then press **Drive** or **Autodrive**. Every choice shows up in the world straight away.
+- **Toolbar** along the bottom: **Autodrive** (on/off), **Camera** (chase, hood, cinematic), **Vehicle**, **Season**, **Weather**, **Time** (with the day/night cycle switch), **Reset** (put the vehicle back on the road), **Photo** and **Settings**. Camera, Vehicle, Season, Weather and Time open a small panel where you click the option you want. Hover a button for a hint.
+- **Settings**: graphics quality (Auto, Low, Medium, High, Ultra), camera, speed units (km/h or mph), speedometer, stats overlay (FPS, chunks, workers) and the day/night cycle.
+- **Photo mode** hides the whole interface. Click or tap anywhere, or press Esc, to bring it back.
+- **Touch screens**: GAS, BRAKE and ◀ ▶ buttons sit just above the toolbar.
+
+Keyboard and gamepad shortcuts are optional extras. The **?** button beside the toolbar lists them:
+
+| | Keyboard | Gamepad |
+|---|---|---|
+| Drive / brake / reverse | W / S (or arrows) | RT / LT |
+| Steer | A / D (or arrows) | Left stick |
+| Handbrake | Space | A |
+| Autodrive | F | X |
+| Camera (chase, hood, cinematic) | C | Y |
+| Look around | Right-drag, wheel to zoom | Right stick |
+| Put the car back on the road | R | B |
+| Next time of day | T | D-pad up |
+| Photo mode | H | D-pad down |
+| Next vehicle | V | D-pad left |
+| Next season | N | |
+| Next weather | G | D-pad right |
+| Settings | M | Select |
+| Stats overlay | F3 | |
+| Start driving (start screen) | Enter | A on "Drive" |
+| Close a panel, leave photo mode | Esc | |
 
 Pressing any drive key turns autodrive off. A car that flips or ends up in the water is put back on the road automatically.
 
@@ -196,6 +208,8 @@ src/client/     StarterPlayerScripts.InfiniteRoadClient
   Vehicles.luau        vehicle catalogue (ids, names, tuning, colours)
   Car.luau, Motorcycle.luau, AutoDrive.luau, CameraController.luau
   Input.luau, Hud.luau, SettingsMenu.luau, Quality.luau, Atmosphere.luau
+  UI/                  start screen, toolbar, popovers, vehicle picker, theme
+  SoundUtil.luau, Ambience.luau   sound entries with loop regions, region ambience
   AssetLibrary.luau    premade model slots (asset packs)
 src/server/     ServerScriptService.InfiniteRoadServer (seed + leaderboard)
 assets/         README shown inside ReplicatedStorage.InfiniteRoadAssets
@@ -232,6 +246,7 @@ lune run tools/test_road [seed] [studs]     # road invariants: monotonic X, min 
 lune run tools/test_chunks [seed]           # full chunk pipeline: voxels, road, tunnels, bridges, decoration, rebase
 lune run tools/test_assets                  # fake asset packs: cleaning, scaling, placement, guard rails, car + bike bodies and wheels
 lune run tools/test_scenic [seed]           # seasons (snow, ice, tree styles), weather/environment, motorcycle, parallel worker path, waterfalls, ocean
+lune run tools/test_ui                      # builds and clicks through the whole interface (desktop, touch, gamepad sizes)
 lune run tools/bench                        # terrain build time per chunk
 lune run tools/curve_stats [seed]           # curve radius distribution
 lune run tools/list_sections [seed]         # region sequence

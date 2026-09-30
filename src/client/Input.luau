@@ -2,56 +2,72 @@
 	Input
 	-----
 	Driving input from keyboard, gamepad and touch, merged into
-	throttle (-1..1), steer (-1..1) and handbrake.
+	throttle (-1..1), steer (-1..1) and handbrake. Everything else can be
+	clicked in the interface (UI/App.luau); these keys are optional
+	shortcuts for the same actions.
 
 	Keyboard: W/S or arrows drive, A/D or arrows steer, Space handbrake,
-	          F autodrive, C camera, R reset car, T time of day, H hide HUD,
-	          V car/motorcycle, N season, G weather, M settings menu,
-	          F3 stats overlay.
+	          F autodrive, C camera, R reset car, T time of day,
+	          H photo mode, V next vehicle, N season, G weather,
+	          M settings, F3 stats overlay, Enter start driving,
+	          Esc close menus or leave photo mode.
 	Gamepad:  RT/LT throttle/brake, left stick steer, A handbrake,
-	          X autodrive, Y camera, B reset.
-	Touch:    on-screen buttons.
+	          X autodrive, Y camera, B reset, D-pad up time of day,
+	          D-pad down photo mode, D-pad left vehicle, D-pad right
+	          weather, Select settings.
+	Touch:    on-screen steering and pedals (Input:touchControls).
 ]]
 
 local UserInputService = game:GetService("UserInputService")
-local ContextActionService = game:GetService("ContextActionService")
+
+local Theme = require(script.Parent.UI.Theme)
+local Kit = require(script.Parent.UI.Kit)
 
 local Input = {}
 Input.__index = Input
 
 local K = Enum.KeyCode
 
+-- key name -> action name passed to the handlers registered with Input:on
+local SHORTCUTS = {
+	F = "autodrive",
+	ButtonX = "autodrive",
+	C = "camera",
+	ButtonY = "camera",
+	R = "reset",
+	ButtonB = "reset",
+	T = "time",
+	DPadUp = "time",
+	H = "photo",
+	DPadDown = "photo",
+	F3 = "stats",
+	V = "vehicle",
+	DPadLeft = "vehicle",
+	N = "season",
+	G = "weather",
+	DPadRight = "weather",
+	M = "menu",
+	ButtonSelect = "menu",
+	Return = "confirm",
+	KeypadEnter = "confirm",
+	Escape = "back",
+}
+
 function Input.new()
 	local self = setmetatable({}, Input)
 	self.handlers = {}
 	self.gamepad = { throttle = 0, brake = 0, steer = 0 }
 	self.touch = { gas = false, brake = false, left = false, right = false }
+	self.holds = {}
+	self.touchFrame = nil
 
 	UserInputService.InputBegan:Connect(function(input, processed)
 		if processed then
 			return
 		end
-		local kc = input.KeyCode
-		if kc == K.F or kc == K.ButtonX then
-			self:_fire("autodrive")
-		elseif kc == K.C or kc == K.ButtonY then
-			self:_fire("camera")
-		elseif kc == K.R or kc == K.ButtonB then
-			self:_fire("reset")
-		elseif kc == K.T or kc == K.DPadUp then
-			self:_fire("time")
-		elseif kc == K.H or kc == K.DPadDown then
-			self:_fire("hud")
-		elseif kc == K.F3 then
-			self:_fire("stats")
-		elseif kc == K.V or kc == K.DPadLeft then
-			self:_fire("vehicle")
-		elseif kc == K.N then
-			self:_fire("season")
-		elseif kc == K.G or kc == K.DPadRight then
-			self:_fire("weather")
-		elseif kc == K.M or kc == K.ButtonSelect then
-			self:_fire("menu")
+		local action = SHORTCUTS[input.KeyCode.Name]
+		if action then
+			self:_fire(action)
 		end
 	end)
 
@@ -76,10 +92,6 @@ function Input.new()
 			self.gamepad.steer = 0
 		end
 	end)
-
-	if UserInputService.TouchEnabled then
-		self:_touchButtons()
-	end
 	return self
 end
 
@@ -94,34 +106,88 @@ function Input:_fire(name: string)
 	end
 end
 
-function Input:_touchButtons()
-	local function hold(field)
-		return function(_, state)
-			self.touch[field] = state == Enum.UserInputState.Begin or state == Enum.UserInputState.Change
-			return Enum.ContextActionResult.Sink
-		end
-	end
-	local function tap(event)
-		return function(_, state)
-			if state == Enum.UserInputState.Begin then
-				self:_fire(event)
-			end
-			return Enum.ContextActionResult.Sink
-		end
-	end
+--[[
+	On-screen steering (bottom left) and pedals (bottom right) for touch
+	screens, built into `parent` (the interface's scaled root). They sit
+	above Theme.ToolbarReserve, so they never cover the toolbar.
+]]
+function Input:touchControls(parent: Instance): Frame
+	local frame = Kit.new("Frame", {
+		Name = "TouchControls",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 2,
+		Parent = parent,
+	})
+	local size, gap, m = 88, 12, Theme.Margin
+	local bottom = -Theme.ToolbarReserve
 	local buttons = {
-		{ "IR_Gas", hold("gas"), "GAS", UDim2.new(1, -95, 1, -120) },
-		{ "IR_Brake", hold("brake"), "BRAKE", UDim2.new(1, -190, 1, -95) },
-		{ "IR_Left", hold("left"), "<", UDim2.new(0, 30, 1, -110) },
-		{ "IR_Right", hold("right"), ">", UDim2.new(0, 125, 1, -110) },
-		{ "IR_Auto", tap("autodrive"), "AUTO", UDim2.new(1, -95, 1, -215) },
-		{ "IR_Cam", tap("camera"), "CAM", UDim2.new(1, -190, 1, -190) },
-		{ "IR_Reset", tap("reset"), "RESET", UDim2.new(1, -95, 0, 70) },
+		{ name = "Left", text = "◀", field = "left", anchor = Vector2.new(0, 1), position = UDim2.new(0, m, 1, bottom), height = size },
+		{ name = "Right", text = "▶", field = "right", anchor = Vector2.new(0, 1), position = UDim2.new(0, m + size + gap, 1, bottom), height = size },
+		{ name = "Brake", text = "BRAKE", field = "brake", anchor = Vector2.new(1, 1), position = UDim2.new(1, -(m + size + gap), 1, bottom), height = size },
+		{ name = "Gas", text = "GAS", field = "gas", anchor = Vector2.new(1, 1), position = UDim2.new(1, -m, 1, bottom), height = size + 32 },
 	}
 	for _, b in buttons do
-		ContextActionService:BindAction(b[1], b[2], true)
-		ContextActionService:SetTitle(b[1], b[3])
-		ContextActionService:SetPosition(b[1], b[4])
+		local button = Kit.new("TextButton", {
+			Name = b.name,
+			AutoButtonColor = false,
+			AnchorPoint = b.anchor,
+			Position = b.position,
+			Size = UDim2.fromOffset(size, b.height),
+			BackgroundColor3 = Theme.Panel,
+			BackgroundTransparency = 0.3,
+			BorderSizePixel = 0,
+			Font = Theme.FontBold,
+			TextSize = utf8.len(b.text) > 1 and 15 or 24,
+			TextColor3 = Theme.Text,
+			Text = b.text,
+			Parent = frame,
+		})
+		Kit.corner(button, 18)
+		Kit.stroke(button, nil, 0.8)
+		self:_hold(button, b.field)
+	end
+	-- a finger lifted after sliding off its button still lets go
+	UserInputService.TouchEnded:Connect(function(touch)
+		self:_release(touch)
+	end)
+	self.touchFrame = frame
+	return frame
+end
+
+-- Hold `button` to set self.touch[field]; several fingers can hold it.
+function Input:_hold(button: TextButton, field: string)
+	local touches = {}
+	local function update()
+		local held = next(touches) ~= nil
+		self.touch[field] = held
+		Kit.tween(button, {
+			BackgroundColor3 = held and Theme.Accent or Theme.Panel,
+			TextColor3 = held and Theme.OnAccent or Theme.Text,
+		}, 0.06)
+	end
+	button.InputBegan:Connect(function(input)
+		local t = input.UserInputType
+		if t == Enum.UserInputType.Touch or t == Enum.UserInputType.MouseButton1 then
+			touches[input] = true
+			update()
+		end
+	end)
+	button.InputEnded:Connect(function(input)
+		if touches[input] then
+			touches[input] = nil
+			update()
+		end
+	end)
+	table.insert(self.holds, { touches = touches, update = update })
+end
+
+function Input:_release(input)
+	for _, hold in self.holds do
+		if hold.touches[input] then
+			hold.touches[input] = nil
+			hold.update()
+		end
 	end
 end
 
