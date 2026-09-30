@@ -26,8 +26,19 @@ local MAX_MERGE = 8 -- samples per merged part
 
 local CONCRETE = rgb(176, 174, 168)
 local CONCRETE_DARK = rgb(132, 130, 126)
-local RAIL = rgb(176, 180, 184)
-local TUNNEL_WALL = rgb(196, 192, 182)
+local CONCRETE_LIGHT = rgb(196, 194, 188)
+local RAIL = rgb(176, 180, 184) -- galvanised steel
+local RAIL_WEB = rgb(140, 144, 148) -- the beam's groove, mostly in shade
+local RAIL_POST = rgb(120, 124, 128)
+local BLOCKOUT = rgb(62, 64, 68)
+local TUNNEL_WALL = rgb(196, 192, 182) -- light walls
+local TUNNEL_ROOF = rgb(150, 148, 142) -- darker arch and ceiling, so the lamps stand out
+local LAMP_HOUSING = rgb(70, 72, 76)
+local REFLECTOR = rgb(255, 170, 40)
+
+-- W-beam guard rail, in studs (about 0.28 m each): the beam is 1.1 tall
+-- (0.3 m) with its top 2.5 above the road (0.7 m)
+local RAIL_TOP = 2.5
 
 function RoadBuilder.new(world, config, props)
 	local self = setmetatable({}, RoadBuilder)
@@ -86,7 +97,9 @@ end
 	One strip of parts following the road between samples a and b+1
 	(segments a..b), only over segments where filter(k) is true.
 	spec: offset, width, top (height of the top face above the road surface),
-	      thickness, material, color, collide, query, name, roll, centered
+	      thickness, material, color, collide, query, name, roll, centered,
+	      extend (extra length, so the ends of strips laid side by side do not
+	      share a plane)
 ]]
 function RoadBuilder:_strip(parent, a: number, b: number, filter, spec, origin: Vector3)
 	local road = self.world.road
@@ -130,7 +143,7 @@ function RoadBuilder:_strip(parent, a: number, b: number, filter, spec, origin: 
 		p.Color = spec.color
 		p.TopSurface = Enum.SurfaceType.Smooth
 		p.BottomSurface = Enum.SurfaceType.Smooth
-		p.Size = Vector3.new(width, thick, len + 0.5 * width * turn + 0.12)
+		p.Size = Vector3.new(width, thick, len + 0.5 * width * turn + 0.12 + (spec.extend or 0))
 		p.CFrame = cf - origin
 		if spec.transparency then
 			p.Transparency = spec.transparency
@@ -173,12 +186,63 @@ function RoadBuilder:_railSegments(a, b, side, hasRail, rail, origin, parent)
 	end
 end
 
+-- A plain anchored part that nothing collides with.
+local function piece(name: string, size: Vector3, cf: CFrame, color: Color3, material, parent, shadow: boolean?)
+	local p = Instance.new("Part")
+	p.Name = name
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	p.CastShadow = shadow ~= false
+	p.Material = material
+	p.Color = color
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	p.Size = size
+	p.CFrame = cf
+	p.Parent = parent
+	return p
+end
+
+-- Turned-down guard rail end: the beam bends down into the ground over
+-- 12 studs, flared a little away from the road. `dir` is -1 at the start
+-- of a run (going back) and 1 at its end.
+function RoadBuilder:_railEnd(k: number, dir: number, side: number, origin: Vector3, parent)
+	local road = self.world.road
+	local hw = self.hw
+	local p0, _, r0, u0 = self:_frame(k)
+	local p1, _, r1, u1 = road:frameAt((k - 1) * self.step + dir * 12)
+	local a = p0 + r0 * side * (hw + 1.2) + u0 * (RAIL_TOP - 0.55)
+	local b = p1 + r1 * side * (hw + 1.6) - u1 * 0.4
+	local mid = (a + b) * 0.5
+	local len = (b - a).Magnitude
+	-- (a little thinner than the beam, so their sides never share a plane)
+	piece("RailEnd", Vector3.new(0.3, 1.1, len + 0.4), CFrame.lookAt(mid, b, u0) - origin, RAIL, Enum.Material.Metal, parent)
+end
+
 -- Place a model's ground pivot at world position `base`, facing oncoming
 -- traffic.
 local function placeFacing(model: Model, base: Vector3, fwd: Vector3, origin: Vector3, parent)
 	local f = flatForward(fwd)
 	model:PivotTo(CFrame.lookAt(base - origin, base - origin - f))
 	model.Parent = parent
+end
+
+-- How far a sign reaches from its pivot towards the road (its +X side once
+-- it faces oncoming drivers on the right).
+local function signReach(model: Model): number
+	local pivot = model:GetPivot()
+	local reach = 0
+	for _, d in model:GetDescendants() do
+		if d:IsA("BasePart") and d.Transparency < 1 then
+			local rel = pivot:ToObjectSpace(d.CFrame)
+			local x0, _, _, r00, r01, r02 = rel:GetComponents()
+			local s = d.Size
+			reach = max(reach, x0 + abs(r00) * s.X / 2 + abs(r01) * s.Y / 2 + abs(r02) * s.Z / 2)
+		end
+	end
+	return reach
 end
 
 ---------------------------------------------------------------------------
@@ -269,37 +333,58 @@ function RoadBuilder:_buildRun(a: number, b: number, origin: Vector3, parent)
 	end
 	self:_dashes(a, b, noPassing, origin, parent)
 
-	-- guard rails (asset segments, if provided, sit on an invisible collider)
+	-- guard rails: a W-beam on posts with blockouts. The "GuardRail" strip
+	-- is the beam's web and its collider; two ridge strips in front of it
+	-- give the W profile. Runs that start or stop in open country end in a
+	-- turned-down terminal (runs meeting a bridge or tunnel stop against the
+	-- parapet or portal). Asset segments, if provided, sit on an invisible
+	-- collider instead.
 	local railAsset = self.props.assets and self.props.assets.rail
+	local metal = Enum.Material.Metal
 	for _, side in { -1, 1 } do
 		local function hasRail(k)
 			return road:hasRail(k, side)
 		end
 		self:_strip(parent, a, b, hasRail, {
-			name = "GuardRail", offset = side * (hw + 1.2), width = 0.35, top = 2.7, thickness = 1.1,
-			material = Enum.Material.Metal, color = RAIL, collide = true,
+			name = "GuardRail", offset = side * (hw + 1.2), width = 0.35, top = RAIL_TOP, thickness = 1.1,
+			material = metal, color = railAsset and RAIL or RAIL_WEB, collide = true,
 			transparency = railAsset and 1 or 0,
 		}, origin)
 		if railAsset then
 			self:_railSegments(a, b, side, hasRail, railAsset, origin, parent)
 			continue
 		end
+		for _, top in { RAIL_TOP - 0.05, RAIL_TOP - 0.67 } do
+			self:_strip(parent, a, b, hasRail, {
+				name = "RailBeam", offset = side * (hw + 0.95), width = 0.2, top = top, thickness = 0.38,
+				material = metal, color = RAIL, extend = 0.1,
+			}, origin)
+		end
+		-- open country: no rail, bridge or tunnel
+		local function openGround(k)
+			return not hasRail(k) and not road:isBridge(k) and not road:isTunnel(k)
+		end
 		for k = a, b do
-			if k % cfg.GuardRail.PostSpacing == 0 and hasRail(k) then
-				local p, f, r, u = self:_frame(k)
-				local c = p + r * side * (hw + 1.35) + u * 1.1
-				local post = Instance.new("Part")
-				post.Name = "RailPost"
-				post.Anchored = true
-				post.CanCollide = false
-				post.CanQuery = false
-				post.CanTouch = false
-				post.CastShadow = false
-				post.Material = Enum.Material.Metal
-				post.Color = CONCRETE_DARK
-				post.Size = Vector3.new(0.45, 3.2, 0.45)
-				post.CFrame = CFrame.lookAt(c, c + f, u) - origin
-				post.Parent = parent
+			if not hasRail(k) then
+				continue
+			end
+			if k % cfg.GuardRail.PostSpacing == 0 then
+				-- post behind the beam, blockout between them
+				local p, f, _, u = self:_frame(k)
+				local cf = CFrame.lookAt(p, p + f, u) - origin
+				-- (driven 3.5 deep: the terrain hides it where the verge is level)
+				piece("RailPost", Vector3.new(0.5, 5.8, 0.5), cf * CFrame.new(side * (hw + 2.25), -0.6, 0), RAIL_POST, metal, parent, false)
+				piece("RailBlock", Vector3.new(0.66, 0.85, 0.42), cf * CFrame.new(side * (hw + 1.69), RAIL_TOP - 0.55, 0), BLOCKOUT, Enum.Material.SmoothPlastic, parent, false)
+				if k % (cfg.GuardRail.PostSpacing * 2) == 0 then
+					-- reflector on top of the beam, glowing like the delineators
+					piece("RailReflector", Vector3.new(0.14, 0.34, 0.1), cf * CFrame.new(side * (hw + 1.2), RAIL_TOP + 0.15, 0), REFLECTOR, Enum.Material.Neon, parent, false)
+				end
+			end
+			if openGround(k - 1) then
+				self:_railEnd(k, -1, side, origin, parent)
+			end
+			if openGround(k + 1) then
+				self:_railEnd(k + 1, 1, side, origin, parent)
 			end
 		end
 	end
@@ -369,9 +454,15 @@ function RoadBuilder:_bridges(a, b, isBridge, origin, parent)
 	local concrete = Enum.Material.Concrete
 
 	for _, side in { -1, 1 } do
+		-- the parapet stands 0.1 proud of the deck edge and reaches 0.3 below
+		-- the deck, so none of its faces share a plane with the deck's
 		self:_strip(parent, a, b, isBridge, {
-			name = "Parapet", offset = side * (hw + 0.9), width = 1.2, top = 3.2, thickness = 5.7,
-			material = concrete, color = CONCRETE, collide = true,
+			name = "Parapet", offset = side * (hw + 1), width = 1.2, top = 3.2, thickness = 6,
+			material = concrete, color = CONCRETE, collide = true, extend = 0.16,
+		}, origin)
+		self:_strip(parent, a, b, isBridge, {
+			name = "ParapetCap", offset = side * (hw + 1), width = 1.5, top = 3.45, thickness = 0.4,
+			material = concrete, color = CONCRETE_LIGHT, extend = 0.3,
 		}, origin)
 	end
 	self:_strip(parent, a, b, isBridge, {
@@ -390,7 +481,8 @@ function RoadBuilder:_bridges(a, b, isBridge, origin, parent)
 			local topY = p.Y - 8
 			local ground = sampler:groundAt(p.X, p.Z)
 			local bottomY = ground - 5
-			local height = topY - bottomY
+			-- the column stops inside its cap; only the cap meets the girder
+			local height = topY - 1 - bottomY
 			if height > 3 then
 				local depth = height > 110 and 8 or 5.5
 				local c = Vector3.new(p.X, bottomY + height / 2, p.Z)
@@ -419,21 +511,26 @@ function RoadBuilder:_tunnels(a, b, isTunnel, origin, parent)
 	local wallO = hw + 2
 	local topHalf = 9
 
+	-- the sloped arch slabs run from the walls' inner top edge to the
+	-- ceiling's edge, so the lining has no step where they meet
+	local dO, dV = hw - (topHalf + 0.5), ceil - wall
+	local slope = sqrt(dO * dO + dV * dV)
+	local archX = (hw + topHalf + 0.5) / 2 + 0.6 * dV / slope
+	local archY = (wall + ceil) / 2 + 0.6 * dO / slope
 	for _, side in { -1, 1 } do
 		self:_strip(parent, a, b, isTunnel, {
 			name = "TunnelWall", offset = side * wallO, width = 4, top = wall, thickness = wall + 2.5,
 			material = concrete, color = TUNNEL_WALL, collide = true,
 		}, origin)
-		local dO, dV = wallO - topHalf, ceil - wall
 		self:_strip(parent, a, b, isTunnel, {
-			name = "TunnelArch", offset = side * (wallO + topHalf) / 2, width = sqrt(dO * dO + dV * dV) + 1,
-			top = (wall + ceil) / 2, thickness = 1.2, centered = true, roll = atan2(-side * dV, dO),
-			material = concrete, color = TUNNEL_WALL,
+			name = "TunnelArch", offset = side * archX, width = slope + 1,
+			top = archY, thickness = 1.2, centered = true, roll = atan2(-side * dV, dO),
+			material = concrete, color = TUNNEL_ROOF, extend = 0.1,
 		}, origin)
 	end
 	self:_strip(parent, a, b, isTunnel, {
 		name = "TunnelCeiling", offset = 0, width = topHalf * 2 + 1, top = ceil + 1.2, thickness = 1.2,
-		material = concrete, color = TUNNEL_WALL,
+		material = concrete, color = TUNNEL_ROOF,
 	}, origin)
 
 	for k = a, b do
@@ -442,18 +539,10 @@ function RoadBuilder:_tunnels(a, b, isTunnel, origin, parent)
 		end
 		local p, f, r, u = self:_frame(k)
 		if k % cfg.LampSpacing == 0 then
-			local c = p + u * (ceil - 0.2)
-			local lamp = Instance.new("Part")
-			lamp.Name = "TunnelLight"
-			lamp.Anchored = true
-			lamp.CanCollide = false
-			lamp.CanQuery = false
-			lamp.CanTouch = false
-			lamp.CastShadow = false
-			lamp.Material = Enum.Material.Neon
-			lamp.Color = rgb(255, 222, 170)
-			lamp.Size = Vector3.new(1.4, 0.3, 6)
-			lamp.CFrame = CFrame.lookAt(c, c + f, u) - origin
+			-- a housing sunk into the ceiling with the glowing lens under it
+			local cf = CFrame.lookAt(p + u * ceil, p + u * ceil + f, u) - origin
+			piece("TunnelLightHousing", Vector3.new(1.8, 0.6, 6.4), cf * CFrame.new(0, -0.1, 0), LAMP_HOUSING, Enum.Material.Metal, parent, false)
+			local lamp = piece("TunnelLight", Vector3.new(1.3, 0.14, 5.8), cf * CFrame.new(0, -0.42, 0), rgb(255, 222, 170), Enum.Material.Neon, nil, false)
 			-- real lights are expensive; only every other lamp casts one
 			if k % cfg.LightSpacing == 0 then
 				local light = Instance.new("PointLight")
@@ -472,27 +561,78 @@ function RoadBuilder:_tunnels(a, b, isTunnel, origin, parent)
 	end
 end
 
+--[[
+	Portal: a concrete headwall around the tunnel mouth. Its opening follows
+	the lining (walls, sloped arch, ceiling) but sits 0.25 studs outside it,
+	so the lining shows as a clean inner step and no faces coincide. Two
+	wedges fill the upper corners over the arch slabs, and a coping runs
+	along the top. Entering portals carry the tunnel's name.
+
+	The portal is centred where the lining ends (sample k when entering,
+	k + 1 when leaving, as segment k is the last one lined) and leans with
+	the road's bank like the lining does, so the two line up.
+]]
 function RoadBuilder:_portal(k: number, entering: boolean, origin, parent)
 	local cfg = self.config.Tunnel
 	local hw = self.hw
-	local p, f = self:_frame(k)
+	local wall, ceil = cfg.WallHeight, cfg.CeilingHeight
+	local ceilHalf = 9.5 -- half width of the tunnel ceiling (see _tunnels)
+	local p, f, r = self:_frame(entering and k or k + 1)
 	local ff = flatForward(f)
-	local rr = Vector3.new(-ff.Z, 0, ff.X)
-	local open = hw + 4
-	local height = 44
+	local rr = (r - ff * r:Dot(ff)).Unit
+	local up = rr:Cross(ff)
+	local e = 0.25
+	local open = hw + e
+	local height, depth, wing = 44, 5, 30
+	local topY = height - 3
 	-- blocks face the traffic that sees them
 	local face = entering and -ff or ff
-	for _, side in { -1, 1 } do
-		local c = p + rr * side * (open + 13) + Vector3.new(0, height / 2 - 3, 0)
-		self:_block("Portal", Vector3.new(26, height, 5), CFrame.lookAt(c, c + face), CONCRETE, origin, parent)
+	local function facing(c: Vector3): CFrame
+		return CFrame.lookAt(c, c + face, up)
 	end
-	local lintelH = height - 3 - cfg.CeilingHeight - 1
-	local c = p + Vector3.new(0, cfg.CeilingHeight + 1 + lintelH / 2, 0)
-	local lintel = self:_block("Portal", Vector3.new(open * 2, lintelH, 5), CFrame.lookAt(c, c + face), CONCRETE, origin, parent)
+	for _, side in { -1, 1 } do
+		local c = p + rr * side * (open + wing / 2) + up * (height / 2 - 3)
+		self:_block("Portal", Vector3.new(wing, height, depth), facing(c), CONCRETE, origin, parent)
+	end
+	local lintelH = topY - (ceil + e)
+	local c = p + up * (ceil + e + lintelH / 2)
+	local lintel = self:_block("Portal", Vector3.new(open * 2, lintelH, depth), facing(c), CONCRETE, origin, parent)
+	self:_block("PortalCap", Vector3.new((open + wing) * 2 + 1, 1.2, depth + 1), facing(p + up * (topY + 0.4)), CONCRETE_DARK, origin, parent, false)
+
+	-- corner fills: right-angled wedges whose slope is the arch line moved
+	-- out by e (x across the road, y up, for either side)
+	local dO, dV = hw - ceilHalf, ceil - wall
+	local len = sqrt(dO * dO + dV * dV)
+	local ax, ay = hw + e * dV / len, wall + e * dO / len -- a point on the moved line
+	local dx, dy = -dO / len, dV / len -- along it, towards the ceiling
+	local y1 = ay + (open - ax) / dx * dy -- where it meets the portal's side
+	local x2 = ax + (ceil + e - ay) / dy * dx -- where it meets the lintel
+	local legV, legH = ceil + e - y1, open - x2
+	local down = -up
+	for _, side in { -1, 1 } do
+		local out = rr * side
+		local centre = p + out * (open - legH / 2) + up * (ceil + e - legV / 2)
+		local fill = Instance.new("WedgePart")
+		fill.Name = "PortalFill"
+		fill.Anchored = true
+		fill.CanCollide = false
+		fill.CanQuery = false
+		fill.CanTouch = false
+		fill.Material = Enum.Material.Concrete
+		fill.Color = CONCRETE
+		-- local Y points down and Z outwards, so the right angle sits in the
+		-- opening's top corner and the slope faces into the tunnel
+		fill.Size = Vector3.new(depth, legV, legH)
+		fill.CFrame = CFrame.fromMatrix(centre, down:Cross(out), down) - origin
+		fill.Parent = parent
+	end
+
 	if entering then
 		local sec = self.world.sections:get(self.world.road:indexToS(k))
 		local word = string.match(sec.name, "^Lake (%a+)") or string.match(sec.name, "^([%a']+)") or "Mountain"
-		local band = self:_block("PortalSign", Vector3.new(open * 1.4, 3.2, 0.3), CFrame.lookAt(c + face * 2.7, c + face * 3.7), rgb(30, 80, 160), origin, parent, false)
+		-- name band just above the opening, its back on the lintel's face
+		local bandC = p + up * (ceil + e + 3) + face * (depth / 2 + 0.15)
+		local band = self:_block("PortalSign", Vector3.new(open * 1.4, 3.2, 0.3), facing(bandC), rgb(30, 80, 160), origin, parent, false)
 		self.props.addText(band, string.upper(word) .. " TUNNEL", Color3.new(1, 1, 1))
 		band.Material = Enum.Material.SmoothPlastic
 		lintel.Name = "PortalLintel"
@@ -606,7 +746,10 @@ function RoadBuilder:_roadside(a, b, origin, parent)
 		end
 
 		if sign then
-			placeFacing(sign, right, f, origin, parent)
+			-- wide signs (guide signs) stand further out, so neither a post
+			-- nor the board's edge reaches over the shoulder or a guard rail
+			local extra = max(0, signReach(sign) - 2.4)
+			placeFacing(sign, right + r * extra, f, origin, parent)
 		end
 	end
 end
