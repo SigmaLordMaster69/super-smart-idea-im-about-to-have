@@ -28,9 +28,8 @@ local CONCRETE = rgb(176, 174, 168)
 local CONCRETE_DARK = rgb(132, 130, 126)
 local CONCRETE_LIGHT = rgb(196, 194, 188)
 local RAIL = rgb(176, 180, 184) -- galvanised steel
-local RAIL_WEB = rgb(140, 144, 148) -- the beam's groove, mostly in shade
-local RAIL_POST = rgb(120, 124, 128)
-local BLOCKOUT = rgb(62, 64, 68)
+local RAIL_GROOVE = rgb(120, 124, 128) -- the W-beam's groove, mostly in shade
+local RAIL_POST = rgb(112, 116, 120)
 local TUNNEL_WALL = rgb(196, 192, 182) -- light walls
 local TUNNEL_ROOF = rgb(150, 148, 142) -- darker arch and ceiling, so the lamps stand out
 local LAMP_HOUSING = rgb(70, 72, 76)
@@ -333,9 +332,9 @@ function RoadBuilder:_buildRun(a: number, b: number, origin: Vector3, parent)
 	end
 	self:_dashes(a, b, noPassing, origin, parent)
 
-	-- guard rails: a W-beam on posts with blockouts. The "GuardRail" strip
-	-- is the beam's web and its collider; two ridge strips in front of it
-	-- give the W profile. Runs that start or stop in open country end in a
+	-- guard rails: a W-beam on posts. The "GuardRail" strip is the beam and
+	-- its collider; a thin dark strip along its middle stands in for the
+	-- W's shaded groove. Runs that start or stop in open country end in a
 	-- turned-down terminal (runs meeting a bridge or tunnel stop against the
 	-- parapet or portal). Asset segments, if provided, sit on an invisible
 	-- collider instead.
@@ -347,19 +346,17 @@ function RoadBuilder:_buildRun(a: number, b: number, origin: Vector3, parent)
 		end
 		self:_strip(parent, a, b, hasRail, {
 			name = "GuardRail", offset = side * (hw + 1.2), width = 0.35, top = RAIL_TOP, thickness = 1.1,
-			material = metal, color = railAsset and RAIL or RAIL_WEB, collide = true,
+			material = metal, color = RAIL, collide = true,
 			transparency = railAsset and 1 or 0,
 		}, origin)
 		if railAsset then
 			self:_railSegments(a, b, side, hasRail, railAsset, origin, parent)
 			continue
 		end
-		for _, top in { RAIL_TOP - 0.05, RAIL_TOP - 0.67 } do
-			self:_strip(parent, a, b, hasRail, {
-				name = "RailBeam", offset = side * (hw + 0.95), width = 0.2, top = top, thickness = 0.38,
-				material = metal, color = RAIL, extend = 0.1,
-			}, origin)
-		end
+		self:_strip(parent, a, b, hasRail, {
+			name = "RailGroove", offset = side * (hw + 0.99), width = 0.1, top = RAIL_TOP - 0.43, thickness = 0.24,
+			material = metal, color = RAIL_GROOVE, extend = 0.1,
+		}, origin)
 		-- open country: no rail, bridge or tunnel
 		local function openGround(k)
 			return not hasRail(k) and not road:isBridge(k) and not road:isTunnel(k)
@@ -369,13 +366,13 @@ function RoadBuilder:_buildRun(a: number, b: number, origin: Vector3, parent)
 				continue
 			end
 			if k % cfg.GuardRail.PostSpacing == 0 then
-				-- post behind the beam, blockout between them
+				-- a deep post (spacer block and post in one) right behind the
+				-- beam, driven 3.5 deep: the terrain hides it where the verge
+				-- is level
 				local p, f, _, u = self:_frame(k)
 				local cf = CFrame.lookAt(p, p + f, u) - origin
-				-- (driven 3.5 deep: the terrain hides it where the verge is level)
-				piece("RailPost", Vector3.new(0.5, 5.8, 0.5), cf * CFrame.new(side * (hw + 2.25), -0.6, 0), RAIL_POST, metal, parent, false)
-				piece("RailBlock", Vector3.new(0.66, 0.85, 0.42), cf * CFrame.new(side * (hw + 1.69), RAIL_TOP - 0.55, 0), BLOCKOUT, Enum.Material.SmoothPlastic, parent, false)
-				if k % (cfg.GuardRail.PostSpacing * 2) == 0 then
+				piece("RailPost", Vector3.new(0.8, 5.85, 0.5), cf * CFrame.new(side * (hw + 1.76), -0.575, 0), RAIL_POST, metal, parent, false)
+				if k % (cfg.GuardRail.PostSpacing * 4) == 0 then
 					-- reflector on top of the beam, glowing like the delineators
 					piece("RailReflector", Vector3.new(0.14, 0.34, 0.1), cf * CFrame.new(side * (hw + 1.2), RAIL_TOP + 0.15, 0), REFLECTOR, Enum.Material.Neon, parent, false)
 				end

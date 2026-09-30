@@ -113,7 +113,7 @@ Config.World = {
 	ChunkSize = 128, -- studs, must be a multiple of 4
 	TerrainRadius = 900, -- chunks inside this radius of the car get terrain + road
 	UnloadMargin = 260, -- extra distance before a chunk is thrown away
-	NearDecorRadius = 460, -- full detail trees/props
+	NearDecorRadius = 400, -- full detail trees/props
 	FarDecorRadius = 1000, -- single-part impostor trees
 	LookAhead = 1.4, -- seconds of velocity added to the focus point
 	FrameBudget = 0.007, -- seconds of generation work per frame while driving
@@ -130,22 +130,22 @@ Config.Quality = {
 	Default = "Auto",
 	Order = { "Low", "Medium", "High", "Ultra" },
 	Low = {
-		TerrainRadius = 560, NearDecorRadius = 280, FarDecorRadius = 560,
+		TerrainRadius = 560, NearDecorRadius = 240, FarDecorRadius = 560,
 		DecorDensity = 0.6, TreeShadows = false, Workers = 2,
 		BudgetMin = 0.002, BudgetMax = 0.006,
 	},
 	Medium = {
-		TerrainRadius = 740, NearDecorRadius = 380, FarDecorRadius = 740,
+		TerrainRadius = 740, NearDecorRadius = 320, FarDecorRadius = 740,
 		DecorDensity = 0.8, TreeShadows = false, Workers = 3,
 		BudgetMin = 0.003, BudgetMax = 0.008,
 	},
 	High = {
-		TerrainRadius = 900, NearDecorRadius = 460, FarDecorRadius = 900,
+		TerrainRadius = 900, NearDecorRadius = 400, FarDecorRadius = 900,
 		DecorDensity = 1, TreeShadows = true, Workers = 3,
 		BudgetMin = 0.004, BudgetMax = 0.010,
 	},
 	Ultra = {
-		TerrainRadius = 1150, NearDecorRadius = 560, FarDecorRadius = 1150,
+		TerrainRadius = 1150, NearDecorRadius = 500, FarDecorRadius = 1150,
 		DecorDensity = 1, TreeShadows = true, Workers = 4,
 		BudgetMin = 0.004, BudgetMax = 0.012,
 	},

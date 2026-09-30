@@ -9,9 +9,9 @@
 	Model whose pivot is the point where it meets the ground, so placing one
 	is just `clone:PivotTo(CFrame.new(groundPoint) * yaw)`.
 
-	Each tree kind also has a cheap "far" version (two parts at most) used by
-	distant chunks. It keeps the near tree's silhouette: a stepped cone for
-	pines, a crown on a trunk for broadleaf trees.
+	Each tree kind also has a cheap "far" version used by distant chunks,
+	where most trees are: one part for conifers and cacti (a pointed
+	pyramid for pines), two for the rest (a crown on a trunk).
 
 	Tree shapes are varied with a small seeded generator (not Random), so a
 	given kind, size and variant looks the same in the game and in the
@@ -188,6 +188,12 @@ end
 	tiers are pairs of crossed tents (four-sided cones), the top one a
 	single tent. Each tier is turned and nudged off centre, so the
 	silhouette is jagged and no two trees are alike.
+
+	The snowy pine has the same three tiers as single tents, each turned
+	against the one below. Snow lies on the upper part of each green tier:
+	the same tent shape scaled down from the tip and lifted so its slopes
+	stand 0.1 studs off the green ones (parallel, never coplanar). The top
+	tier is a white spire.
 ]]
 local PINE_TIERS = {
 	-- base height, width, height, tents
@@ -211,41 +217,51 @@ local function pineTiers(m, sc, variant, green: Color3)
 	end
 end
 
---[[
-	Snowy pine: five stacked branch tiers, each under a snow cap a little
-	wider than the tier, so the green only shows as a band underneath, and
-	a snowy tip. Tiers are nudged and tipped for an irregular outline.
-]]
+local SNOW_TIERS = {
+	-- base height, width, height (single tents look slimmer, so a bit wider)
+	{ 3, 13.2, 10.5 },
+	{ 9.6, 9.8, 9 },
+	{ 15.8, 6, 8.6 },
+}
 local function snowTiers(m, sc, variant, green: Color3)
 	local r = stream(3, variant, sc * 100)
 	cylinder(m, -1.5, 10 * sc + 1.5, 1.6 * sc, BARK, Enum.Material.Wood, nil, true)
-	local y = 3.2 * sc
-	for i = 0, 4 do
-		local d = (13 - 2.2 * i) * sc * r(0.94, 1.05)
-		local h = (3.6 - 0.3 * i) * sc
-		local c = Vector3.new(r(-0.3, 0.3) * sc, y + h / 2, r(-0.3, 0.3) * sc)
-		local tilt = CFrame.Angles(r(-0.06, 0.06), 0, r(-0.06, 0.06))
-		disc(m, c, d, h, darker(green, 0.1 - i * 0.03), tilt)
-		if i < 4 then
-			disc(m, c + Vector3.new(0, h / 2 + 0.05 * sc, 0), d * 1.03, 0.6 * sc, SNOW, tilt)
+	local yaw = r(0, 6.28)
+	for i, t in SNOW_TIERS do
+		local w, h = t[2] * sc * r(0.94, 1.05), t[3] * sc
+		yaw += math.pi / 2 + r(-0.3, 0.3)
+		local base = CFrame.new(r(-0.35, 0.35) * sc, t[1] * sc, r(-0.35, 0.35) * sc) * CFrame.Angles(0, yaw, 0)
+		if i < #SNOW_TIERS then
+			local len = w * 0.5
+			tent(m, base, w, len, h, darker(green, 0.16 - i * 0.04))
+			-- snow: the top 55% of the tent, lifted until its slopes are 0.1
+			-- off the green ones, and a little longer so the ends stand off too
+			local f = 0.55
+			local lift = 0.1 * math.sqrt((w / 2) ^ 2 + h * h) / (w / 2)
+			tent(m, base * CFrame.new(0, (1 - f) * h + lift, 0), w * f, len + 0.12, h * f, SNOW)
 		else
-			disc(m, c + Vector3.new(0, h / 2 + 1.2 * sc, 0), d * 0.55, 2.6 * sc, SNOW, tilt)
+			tent(m, base, w, w * 0.32, h, SNOW)
 		end
-		y += (3.5 - 0.25 * i) * sc
 	end
 end
 
--- far conifer: the same outline as a stepped cone of two parts
-local function coniferFar(m, sc, lower: Color3, upper: Color3)
-	cylinder(m, -0.5, 12.5 * sc, 10.5 * sc, lower)
-	cylinder(m, 11.5 * sc, 9 * sc, 6.2 * sc, upper)
+-- Far conifer: one corner wedge, a pyramid with its tip over one corner.
+-- It reads as a pointed tree from every side, and the random yaw each
+-- tree gets hides which corner the tip leans to.
+local function coniferFar(m, sc, color: Color3)
+	local w, h = 10.5 * sc, 23 * sc
+	newPart("CornerWedgePart", {
+		Size = Vector3.new(w, h, w),
+		CFrame = CFrame.new(0, h / 2 - 0.5, 0),
+		Color = color,
+	}).Parent = m
 end
 
 function BUILDERS.pine(sc, variant, far, style)
 	local m = Instance.new("Model")
 	local green = PINE_GREENS[variant % #PINE_GREENS + 1]
 	if far then
-		coniferFar(m, sc, darker(green, 0.08), green)
+		coniferFar(m, sc, darker(green, 0.04))
 		return finish(m, "PineFar")
 	end
 	pineTiers(m, sc, variant, green)
@@ -256,7 +272,7 @@ function BUILDERS.snowpine(sc, variant, far, style)
 	local m = Instance.new("Model")
 	local green = darker(PINE_GREENS[variant % #PINE_GREENS + 1], 0.08)
 	if far then
-		coniferFar(m, sc, green:Lerp(SNOW, 0.55), SNOW:Lerp(green, 0.2))
+		coniferFar(m, sc, green:Lerp(SNOW, 0.55))
 		return finish(m, "SnowPineFar")
 	end
 	snowTiers(m, sc, variant, green)
@@ -492,8 +508,8 @@ function BUILDERS.cactus(sc, variant, far, style)
 	local m = Instance.new("Model")
 	local d = 1.9 * sc
 	if far then
-		cylinder(m, -0.5, 11.5 * sc, 2 * sc, CACTUS)
-		cylinder(m, 4.5 * sc, 3.6 * sc, 1.5 * sc, CACTUS, nil, Vector3.new(1.55 * sc, 0, 0))
+		-- the arms are too thin to see that far away
+		cylinder(m, -0.5, 11.5 * sc, 2.2 * sc, CACTUS)
 		return finish(m, "CactusFar")
 	end
 	local tipColor = style.frost and CACTUS:Lerp(SNOW, 0.7) or lighter(CACTUS, 0.05)
@@ -540,20 +556,17 @@ function BUILDERS.drybush(sc, variant, far, style)
 	return finish(m, "DryBush")
 end
 
--- A patch of blooms around a low leafy clump.
+-- A patch of three blooms. (A green clump under them was lost against the
+-- grass, so it went: flowers are the most numerous prop in a meadow.)
 function BUILDERS.flowers(sc, variant, far, style)
 	local m = Instance.new("Model")
 	local r = stream(13, variant)
 	local color = FLOWERS[variant % #FLOWERS + 1]
-	local p = ball(m, Vector3.new(0, 0.25, 0), 1.9, rgb(84, 140, 64))
-	p.CastShadow = false
 	for i = 1, 3 do
 		local a = i * 2.09 + r(-0.5, 0.5)
-		local dist = r(0.6, 1.3)
-		local size = r(0.6, 0.85)
-		-- blooms nearer the middle sit higher, on the clump
-		local y = 0.35 + size / 2 + (1.3 - dist) * 0.3
-		p = ball(m, Vector3.new(math.cos(a) * dist, y, math.sin(a) * dist), size, i == 3 and lighter(color, 0.3) or color)
+		local dist = r(0.4, 1.8)
+		local size = r(0.65, 0.95)
+		local p = ball(m, Vector3.new(math.cos(a) * dist, 0.3 + size / 2, math.sin(a) * dist), size, i == 3 and lighter(color, 0.3) or color)
 		p.CastShadow = false
 	end
 	return finish(m, "Flowers")
