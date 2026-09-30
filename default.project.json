@@ -147,6 +147,74 @@
             "$className": "Folder",
             "$ignoreUnknownInstances": true
           }
+        },
+        "Vehicles": {
+          "$className": "Folder",
+          "$ignoreUnknownInstances": true,
+          "Sedan": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true,
+            "Body": {
+              "$className": "Folder",
+              "$ignoreUnknownInstances": true
+            }
+          },
+          "SportsCar": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true,
+            "Body": {
+              "$className": "Folder",
+              "$ignoreUnknownInstances": true
+            }
+          },
+          "Pickup": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true,
+            "Body": {
+              "$className": "Folder",
+              "$ignoreUnknownInstances": true
+            }
+          },
+          "Semi": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true,
+            "Body": {
+              "$className": "Folder",
+              "$ignoreUnknownInstances": true
+            }
+          },
+          "Naked": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true,
+            "Body": {
+              "$className": "Folder",
+              "$ignoreUnknownInstances": true
+            }
+          },
+          "Supermoto": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true,
+            "Body": {
+              "$className": "Folder",
+              "$ignoreUnknownInstances": true
+            }
+          },
+          "Sportbike": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true,
+            "Body": {
+              "$className": "Folder",
+              "$ignoreUnknownInstances": true
+            }
+          },
+          "Cruiser": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true,
+            "Body": {
+              "$className": "Folder",
+              "$ignoreUnknownInstances": true
+            }
+          }
         }
       }
     },

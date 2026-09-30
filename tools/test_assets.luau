@@ -215,11 +215,13 @@ check(car.customBody == true, "car flagged as custom body")
 for _, d in car.model:GetDescendants() do
 	check(not d:IsA("LuaSourceContainer") and not d:IsA("VehicleSeat"), "car kept a " .. d.ClassName)
 end
--- body scaled 20 -> 15 long, so wheels sit at +-3.6*0.75 = 2.7, +-6.5*0.75 = 4.875
+-- the 20-stud body is scaled to the sedan's length, and its wheels
+-- (x +-3.6, z +-6.5, radius 1.6) with it
+local f = Config.Car.BodyLength / 20
 local w1 = car.wheels[1]
 print(string.format("front-left wheel at x=%.2f z=%.2f r=%.2f", w1.x, w1.z, w1.radius))
-check(math.abs(w1.x + 2.7) < 0.05 and math.abs(w1.z + 4.875) < 0.05, "wheel position taken from the model")
-check(math.abs(w1.radius - 1.2) < 0.05, "wheel radius taken from the model")
+check(math.abs(w1.x + 3.6 * f) < 0.05 and math.abs(w1.z + 6.5 * f) < 0.05, "wheel position taken from the model")
+check(math.abs(w1.radius - 1.6 * f) < 0.05, "wheel radius taken from the model")
 local steering = body:FindFirstChild("SteeringWheel")
 check(steering ~= nil, "steering wheel kept as body")
 local attachedToWheel = false
@@ -242,9 +244,10 @@ check(bikeBody ~= nil, "bike body attached")
 for _, d in bike.model:GetDescendants() do
 	check(not d:IsA("LuaSourceContainer"), "bike kept a " .. d.ClassName)
 end
--- scaled 10 -> 8 long: wheels at z = +-3.5 * 0.8 = 2.8
+-- the 10-stud bike is scaled to the naked bike's length: wheels at z = +-3.5 * scale
+local bf = Config.Motorcycle.BodyLength / 10
 print(string.format("bike wheels at z=%.2f / %.2f", bike.frontWheel.z, bike.rearWheel.z))
-check(math.abs(bike.frontWheel.z + 2.8) < 0.1 and math.abs(bike.rearWheel.z - 2.8) < 0.1, "bike wheel positions taken from the model")
+check(math.abs(bike.frontWheel.z + 3.5 * bf) < 0.1 and math.abs(bike.rearWheel.z - 3.5 * bf) < 0.1, "bike wheel positions taken from the model")
 local frontWelded = false
 for _, d in bikeBody:GetDescendants() do
 	if d:IsA("WeldConstraint") and d.Part0 == bike.frontWheel.part and d.Part1.Name == "FrontWheel" then

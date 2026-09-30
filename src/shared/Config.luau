@@ -179,15 +179,27 @@ Config.Car = {
 	MaxSteerLow = math.rad(34),
 	MaxSteerHigh = math.rad(6.5),
 	SteerSpeed = 3.2, -- how fast the wheels turn (per second, 0..1 of max)
+	-- Full lock never asks the tyres for more than this share of their grip,
+	-- so steering hard at speed (or in the rain) turns as tight as the car
+	-- can, instead of sliding. Set it to 0 to turn the limit off.
+	SteerGrip = 0.8,
 
 	SuspensionLength = 2.6,
 	SuspensionFrequency = 2.3, -- Hz (sets the sag: g / (2 pi f)^2 ~ 0.9 studs)
 	SuspensionDamping = 0.55, -- damping ratio
-	WheelRadius = 1.6,
+	WheelRadius = 1.25,
 	Grip = 1.35, -- friction coefficient
 	HandbrakeGrip = 0.45,
-	RearGrip = 1.05, -- rear grip multiplier (above 1 = stable, below = tail-happy)
+	RearGrip = 1.08, -- rear grip multiplier (above 1 = stable, below = tail-happy)
 	StabilityAssist = 1.5, -- yaw correction rate (1/s), 0 = off
+	Drag = 1.6e-4, -- air drag (per unit mass), a gentle cap on top speed
+
+	-- physics layout (chassis space: the collision box is centred on 0,0,0)
+	ChassisSize = Vector3.new(6, 2.2, 15), -- invisible collision box
+	HalfTrack = 2.8, -- wheel centre to centre line
+	HalfBase = 4.9, -- axle to chassis centre
+	AttachY = -0.2, -- where the suspension rays start
+	ForceY = -0.5, -- height of the tyre forces (below the centre of mass gives body roll)
 
 	Colors = {
 		Color3.fromRGB(200, 58, 48),
@@ -199,7 +211,7 @@ Config.Car = {
 		Color3.fromRGB(150, 196, 214),
 	},
 
-	BodyLength = 15, -- premade car bodies are scaled to this length
+	BodyLength = 17, -- premade car bodies are scaled to this length
 
 	AutoDriveSpeed = 95, -- cruise speed on straights
 	AutoDriveLateralAccel = 70, -- studs/s^2 it is willing to pull in corners
@@ -207,26 +219,30 @@ Config.Car = {
 
 -- Motorcycle: overrides on top of Config.Car. The physics still use four
 -- corners (HalfTrack wide, like invisible outriggers) so it cannot tip over;
--- the bike you see has two wheels and leans into corners.
+-- the bike you see has two wheels and leans into corners. Tyre forces act
+-- at the centre of mass (ForceY 0), so cornering and braking never tip the
+-- physics box and every corner keeps its load.
 Config.Motorcycle = {
-	ChassisSize = Vector3.new(3.2, 2, 8.5),
-	HalfTrack = 2.1,
-	HalfBase = 3.4,
-	WheelRadius = 1.35,
-	SuspensionLength = 2.2,
-	SuspensionFrequency = 2.6,
-	TopSpeed = 175,
-	Acceleration = 58,
+	ChassisSize = Vector3.new(3.6, 2.6, 7),
+	HalfTrack = 2.0,
+	HalfBase = 2.5,
+	WheelRadius = 1.1,
+	ForceY = 0,
+	SuspensionLength = 2.0,
+	SuspensionFrequency = 2.5,
+	TopSpeed = 170,
+	Acceleration = 56,
 	BrakeDeceleration = 120,
 	MaxSteerLow = math.rad(26),
 	MaxSteerHigh = math.rad(4.5),
 	SteerSpeed = 3.0,
-	Grip = 1.75,
+	SteerGrip = 0.7,
+	Grip = 1.5,
 	HandbrakeGrip = 0.9,
 	RearGrip = 1.2,
 	StabilityAssist = 3,
-	BodyLength = 8, -- premade bikes are scaled to this length
-	LeanMax = math.rad(42),
+	BodyLength = 7.4, -- premade bikes are scaled to this length
+	LeanMax = math.rad(45),
 	Colors = {
 		Color3.fromRGB(210, 40, 40),
 		Color3.fromRGB(30, 30, 34),
@@ -244,7 +260,15 @@ Config.Sounds = {
 	Engine = "", -- looping engine hum, pitched up with speed
 	Wind = "", -- looping wind, louder with speed
 	Ambience = "", -- looping background (birds, waves...)
-	MotorcycleEngine = "", -- engine loop for the motorcycle (falls back to Engine)
+	MotorcycleEngine = "", -- engine loop for the bikes (falls back to Engine)
+	-- per vehicle engine loops (each falls back to MotorcycleEngine for
+	-- bikes, then Engine)
+	SportsEngine = "", -- sports car
+	PickupEngine = "", -- pickup truck
+	TruckEngine = "", -- tractor-trailer
+	SupermotoEngine = "", -- supermoto (single cylinder)
+	SportbikeEngine = "", -- sportbike (inline four)
+	CruiserEngine = "", -- cruiser (V-twin)
 	Rain = "", -- looping rain, volume follows rain strength
 	Thunder = "", -- one-shot thunder clap after lightning
 }
