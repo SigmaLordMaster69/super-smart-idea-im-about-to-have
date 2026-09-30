@@ -88,6 +88,9 @@ function CameraController:shift(delta: Vector3)
 	if self.pos then
 		self.pos -= delta
 	end
+	if self.focusY then
+		self.focusY -= delta.Y
+	end
 	local cam = Workspace.CurrentCamera
 	cam.CFrame -= delta
 end
@@ -135,14 +138,19 @@ function CameraController:update(dt: number, car)
 		self.pitch += (rad(12) - self.pitch) * (1 - exp(-2.5 * dt))
 	end
 	local heading = CFrame.Angles(0, self.yaw, 0):VectorToWorldSpace(self.heading)
-	local dist = ((bike and 12 or 17) + speed * 0.035) * self.zoom
-	local focus = carPos + Vector3.new(0, bike and 2.4 or 3, 0)
-	local desired = focus - heading * dist * math.cos(self.pitch) + Vector3.new(0, dist * math.sin(self.pitch) + 1.5, 0)
-
-	if not self.pos then
-		self.pos = desired
+	local wantDist = ((bike and 12 or 17) + speed * 0.035) * self.zoom
+	self.dist = self.dist and self.dist + (wantDist - self.dist) * (1 - exp(-4 * dt)) or wantDist
+	local dist = self.dist
+	-- Follow the car's position exactly: a lagging camera shows every uneven
+	-- physics step as the car shaking on screen. Only the rotation and the
+	-- suspension bounce (height) are smoothed.
+	local fy = carPos.Y + (bike and 2.4 or 3)
+	self.focusY = self.focusY and self.focusY + (fy - self.focusY) * (1 - exp(-10 * dt)) or fy
+	if math.abs(self.focusY - fy) > 12 then
+		self.focusY = fy
 	end
-	self.pos = self.pos:Lerp(desired, 1 - exp(-9 * dt))
+	local focus = Vector3.new(carPos.X, self.focusY, carPos.Z)
+	self.pos = focus - heading * dist * math.cos(self.pitch) + Vector3.new(0, dist * math.sin(self.pitch) + 1.5, 0)
 
 	-- keep the camera out of the terrain
 	local dir = self.pos - focus

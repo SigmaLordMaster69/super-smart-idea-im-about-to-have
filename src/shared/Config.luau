@@ -186,6 +186,8 @@ Config.Car = {
 	WheelRadius = 1.6,
 	Grip = 1.35, -- friction coefficient
 	HandbrakeGrip = 0.45,
+	RearGrip = 1.05, -- rear grip multiplier (above 1 = stable, below = tail-happy)
+	StabilityAssist = 1.5, -- yaw correction rate (1/s), 0 = off
 
 	Colors = {
 		Color3.fromRGB(200, 58, 48),
@@ -216,11 +218,13 @@ Config.Motorcycle = {
 	TopSpeed = 175,
 	Acceleration = 58,
 	BrakeDeceleration = 120,
-	MaxSteerLow = math.rad(30),
-	MaxSteerHigh = math.rad(5),
-	SteerSpeed = 3.8,
-	Grip = 1.3,
-	HandbrakeGrip = 0.5,
+	MaxSteerLow = math.rad(26),
+	MaxSteerHigh = math.rad(4.5),
+	SteerSpeed = 3.0,
+	Grip = 1.75,
+	HandbrakeGrip = 0.9,
+	RearGrip = 1.2,
+	StabilityAssist = 3,
 	BodyLength = 8, -- premade bikes are scaled to this length
 	LeanMax = math.rad(42),
 	Colors = {

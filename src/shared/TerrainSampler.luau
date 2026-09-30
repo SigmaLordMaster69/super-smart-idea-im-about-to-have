@@ -604,8 +604,9 @@ function Sampler:column(x: number, z: number)
 		local tunnel = road:isTunnel(kn)
 		local bridge = not tunnel and road:isBridge(kn)
 		-- well below the road slab (smooth terrain can bulge a little above
-		-- its nominal height), just below the edge on the verge
-		local target = ys - (ad <= hw and 1.5 or 0.45)
+		-- its nominal height), also under the edges: a 4-stud voxel column
+		-- centred just outside the road still reaches under it
+		local target = ys - (ad <= hw + 1 and 1.5 or (ad <= hw + 3 and 1.1 or 0.8))
 		local diff = pre - target
 		local tc = cfg.Tunnel
 		local tunnelHalf = hw + 4

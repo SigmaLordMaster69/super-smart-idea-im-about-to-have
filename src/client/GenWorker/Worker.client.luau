@@ -66,7 +66,9 @@ actor:BindToMessageParallel("Build", function(jobId, cx, cz, originX, originZ)
 		resultEvent:Fire("error", jobId, tostring(job))
 		return
 	end
-	local okWrite, err = pcall(builder.write, builder, job)
+	-- one voxel piece per frame, so several workers finishing together do
+	-- not stack their writes into one long frame
+	local okWrite, err = pcall(builder.write, builder, job, task.wait)
 	builder:release(job)
 	if not okWrite then
 		resultEvent:Fire("error", jobId, tostring(err))

@@ -259,7 +259,9 @@ function ChunkManager:_nextJob()
 		end
 	end
 
-	if self.pendingRebase and (not usePool or pool:inflight() == 0) then
+	-- finished worker results are applied first: their voxels were written
+	-- at the old origin and must be moved along with the rest
+	if self.pendingRebase and #self.finished == 0 and (not usePool or pool:inflight() == 0) then
 		local target = self.pendingRebase
 		self.pendingRebase = nil
 		return function()

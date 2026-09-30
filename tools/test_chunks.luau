@@ -11,7 +11,7 @@ local Config = env.require("src/shared/Config")
 local World = env.require("src/shared/World")
 local ChunkManager = env.require("src/client/ChunkManager")
 
-local Vector3 = env.roblox.Vector3
+local Vector3, CFrame = env.roblox.Vector3, env.roblox.CFrame
 local seed = tonumber(process.args[1]) or 12345
 local failures = 0
 local function check(cond, msg)
@@ -155,6 +155,96 @@ if kB then
 	check((c.BridgeDeck or 0) > 0 and (c.Parapet or 0) > 0, "bridge parts built")
 	check((c.Abutment or 0) > 0, "bridge abutment built")
 end
+
+-- voxel shapes smooth terrain can draw cleanly: a partly filled voxel needs
+-- a full voxel under it (else it renders as a lumpy blob that can cover the
+-- road), and none may hang over air (jagged tunnel roofs)
+local AIR, WATER = env.roblox.Enum.Material.Air, env.roblox.Enum.Material.Water
+local unsupported, hanging, columns = 0, 0, 0
+local latest = {} -- voxel column (world x, z) -> write index, newest wins
+for wi, w in terrain.writes do
+	local m = w.region.CFrame.Position - w.region.Size / 2
+	for ix = 1, #w.materials do
+		for iz = 1, #w.materials[1][1] do
+			latest[(m.X + ix * 4) .. "," .. (m.Z + iz * 4)] = wi
+		end
+	end
+end
+for wi, w in terrain.writes do
+	local m = w.region.CFrame.Position - w.region.Size / 2
+	local mats, occs = w.materials, w.occupancies
+	for ix = 1, #mats do
+		for iz = 1, #mats[1][1] do
+			if latest[(m.X + ix * 4) .. "," .. (m.Z + iz * 4)] == wi then
+				columns += 1
+				local topSeen = false
+				for iy = #mats[ix], 1, -1 do
+					local mat, occ = mats[ix][iy][iz], occs[ix][iy][iz]
+					local solid = mat ~= AIR and mat ~= WATER
+					if solid and occ < 0.999 then
+						local below = iy > 1 and mats[ix][iy - 1][iz] or AIR
+						local belowOcc = iy > 1 and occs[ix][iy - 1][iz] or 0
+						if below == AIR then
+							hanging += 1
+						elseif not topSeen and (below == WATER or belowOcc < 0.999) then
+							unsupported += 1
+						end
+					end
+					topSeen = topSeen or solid
+				end
+			end
+		end
+	end
+end
+print(string.format("voxel columns %d: unsupported surface voxels %d, hanging partial voxels %d", columns, unsupported, hanging))
+check(unsupported == 0, "every partly filled surface voxel sits on a full voxel")
+check(hanging == 0, "no partly filled voxel hangs over air")
+
+-- the drawn terrain surface under every road part stays well below its top
+local function columnTop(x, z, yMax)
+	local key = (math.floor(x / 4) * 4 + 4) .. "," .. (math.floor(z / 4) * 4 + 4)
+	local wi = latest[key]
+	if not wi then
+		return nil
+	end
+	local w = terrain.writes[wi]
+	local m = w.region.CFrame.Position - w.region.Size / 2
+	local ix, iz = math.floor((x - m.X) / 4) + 1, math.floor((z - m.Z) / 4) + 1
+	for iy = #w.materials[ix], 1, -1 do
+		local y0 = m.Y + (iy - 1) * 4
+		local mat = w.materials[ix][iy][iz]
+		if y0 < yMax and mat ~= AIR and mat ~= WATER and w.occupancies[ix][iy][iz] > 0 then
+			return y0 + w.occupancies[ix][iy][iz] * 4
+		end
+	end
+	return nil
+end
+local worstRoad, roadSamples, worstInfo = -math.huge, 0, ""
+for _, d in manager.container:GetDescendants() do
+	if d:IsA("BasePart") and d.Name == "Road" then
+		for _, f in { -0.5, -0.25, 0, 0.25, 0.5 } do
+			for _, t in { -0.45, 0, 0.45 } do
+				local p = (d.CFrame * CFrame.new(d.Size.X * f, d.Size.Y / 2, d.Size.Z * t)).Position
+				local wp0 = manager:toWorld(p)
+				local _, d0 = road:project(wp0.X, wp0.Z)
+				-- (strip corners overhang the verge on the outside of bends)
+				local top = math.abs(d0) <= Config.Road.HalfWidth + 0.25 and columnTop(p.X, p.Z, p.Y + 6) or nil
+				if top then
+					roadSamples += 1
+					if top - p.Y > worstRoad then
+						worstRoad = top - p.Y
+						local wp = manager:toWorld(p)
+						local s, dd = road:project(wp.X, wp.Z)
+						local k = math.floor(s / road.step) + 1
+						worstInfo = string.format("s=%.0f d=%.2f tunnel=%s bridge=%s part=%s f=%.2f t=%.2f", s, dd, tostring(road:isTunnel(k)), tostring(road:isBridge(k)), d:GetFullName():sub(-30), f, t)
+					end
+				end
+			end
+		end
+	end
+end
+print(string.format("terrain under road parts (%d samples, edges included): max %.2f below the top (%s)", roadSamples, -worstRoad, worstInfo))
+check(roadSamples > 100 and worstRoad < -0.6, "terrain stays at least 0.6 below the road top, edges included")
 
 -- 3. rebase: every part moves by exactly -delta
 local sample

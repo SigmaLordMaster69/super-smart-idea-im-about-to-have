@@ -86,7 +86,17 @@ local function newTerrainMock()
 				end
 			end
 		end
-		table.insert(self.writes, { region = region, materials = materials, occupancies = occupancies })
+		-- copy: the builder hands its row tables back to a pool after writing
+		local m2, o2 = table.create(nx), table.create(nx)
+		for ix = 1, nx do
+			local mx, ox = table.create(ny), table.create(ny)
+			for iy = 1, ny do
+				mx[iy] = table.clone(materials[ix][iy])
+				ox[iy] = table.clone(occupancies[ix][iy])
+			end
+			m2[ix], o2[ix] = mx, ox
+		end
+		table.insert(self.writes, { region = region, materials = m2, occupancies = o2 })
 	end
 	function mock:FillRegion(region, resolution, material)
 		assert(resolution == 4 and material == roblox.Enum.Material.Air, "FillRegion args")
@@ -256,6 +266,20 @@ roblox.implementMethod("Workspace", "BulkMoveTo", function(_, parts, cframes)
 	end
 end)
 
+-- Lune's CFrame.lookAt mirrors the direction when given a tilted up vector;
+-- use a correct one (Roblox semantics: RightVector = look x up)
+local RobloxCFrame = roblox.CFrame
+local function lookAt(at, target, up)
+	up = up or roblox.Vector3.new(0, 1, 0)
+	local look = (target - at).Unit
+	local right = look:Cross(up)
+	if right.Magnitude < 1e-6 then
+		right = look:Cross(roblox.Vector3.new(0, 0, 1))
+	end
+	right = right.Unit
+	return RobloxCFrame.fromMatrix(at, right, right:Cross(look))
+end
+local CFrameLib = setmetatable({ lookAt = lookAt }, { __index = RobloxCFrame })
 local dataModel = roblox.Instance.new("DataModel")
 -- properties the engine would give defaults to
 dataModel:GetService("Lighting").ClockTime = 14
@@ -326,7 +350,7 @@ baseEnv = {
 	Vector3 = roblox.Vector3,
 	Vector2 = roblox.Vector2,
 	Vector3int16 = roblox.Vector3int16,
-	CFrame = roblox.CFrame,
+	CFrame = CFrameLib,
 	Color3 = roblox.Color3,
 	ColorSequence = roblox.ColorSequence,
 	ColorSequenceKeypoint = roblox.ColorSequenceKeypoint,
@@ -360,6 +384,7 @@ Env.game = gameMock
 Env.workspace = dataModel:GetService("Workspace")
 Env.terrain = terrainMock
 Env.roblox = roblox
+Env.CFrame = CFrameLib
 
 function Env.require(path)
 	local file = resolveFile(path:match("^(.*)/[^/]+$"), path:match("([^/]+)$"))

@@ -283,11 +283,14 @@ function TerrainBuilder:compute(cx: number, cz: number, origin: Vector3, yieldFn
 			local hE, hW, hN, hS = H[idx + 1], H[idx - 1], H[idx + G], H[idx - G]
 			local gx, gz = (hE - hW) * 0.125, (hN - hS) * 0.125
 			SL[idx] = sqrt(gx * gx + gz * gz)
-			local bottom = min(h, hE, hW, hN, hS) - SHELL
-			if VT[idx] > VB[idx] then
-				bottom = min(bottom, VB[idx] - 6)
-			end
-			BOT[idx] = bottom
+			-- Smooth terrain only draws a partly filled voxel as a flat surface
+			-- when a completely full voxel sits under it; otherwise it becomes
+			-- a lumpy blob. So keep at least one full voxel under the surface
+			-- (or under the tunnel floor), and start the shell on a voxel
+			-- boundary so its lowest voxel is full as well.
+			local floorY = VT[idx] > VB[idx] and VB[idx] or h
+			local bottom = min(min(h, hE, hW, hN, hS) - SHELL, floor(floorY / 4) * 4 - 4)
+			BOT[idx] = floor(bottom / 4) * 4
 		end
 	end
 
@@ -337,6 +340,11 @@ function TerrainBuilder:compute(cx: number, cz: number, origin: Vector3, yieldFn
 					local h, bottom, water = H[idx], BOT[idx], WL[idx]
 					local vb, vt = VB[idx], VT[idx]
 					local hasVoid = vt > vb
+					if hasVoid then
+						-- the void's roof on a voxel boundary: a partly filled voxel
+						-- over air would hang down as a jagged blob
+						vt = ceil(vt / 4) * 4
+					end
 					local ty, hint, flags, slope = TY[idx], HI[idx], FL[idx], SL[idx]
 					local v = mnoise((x0 + (i - 0.5) * 4) / 38, (z0 + (j - 0.5) * 4) / 38, noiseZ) * 1.6
 					local surf = surface(self, ty, hint, flags, slope, h, water, v)

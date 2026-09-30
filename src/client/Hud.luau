@@ -131,7 +131,7 @@ function Hud.new(seed: number)
 		Visible = not touch,
 		Text = "W/S drive   A/D steer   Space handbrake   F autodrive   C camera   V car/bike   N season   G weather   T time   M menu   R reset   H hide HUD   F3 stats",
 	})
-	self.toast = label(root, {
+	self.toastLabel = label(root, {
 		Name = "Toast",
 		AnchorPoint = Vector2.new(0.5, 1),
 		Position = UDim2.new(0.5, 0, 1, -60),
@@ -284,13 +284,13 @@ function Hud:showRegion(name: string, subtitle: string)
 end
 
 function Hud:toast(text: string)
-	self.toast.Text = text
-	fadeText(self.toast, true, 0.2)
+	self.toastLabel.Text = text
+	fadeText(self.toastLabel, true, 0.2)
 	local token = {}
 	self._toastToken = token
 	task.delay(1.8, function()
 		if self._toastToken == token then
-			fadeText(self.toast, false, 0.6)
+			fadeText(self.toastLabel, false, 0.6)
 		end
 	end)
 end

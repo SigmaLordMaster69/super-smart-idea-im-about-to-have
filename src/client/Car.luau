@@ -259,6 +259,16 @@ function Car.new(config, color: Color3, assets, kind: string?)
 	aero.Parent = chassis
 	self.aero = aero
 
+	-- stability assist: a yaw torque that pulls the spin rate towards what
+	-- the steering asks for, so the vehicle does not spin out easily
+	local yaw = Instance.new("Torque")
+	yaw.Name = "StabilityAssist"
+	yaw.Attachment0 = aeroAtt
+	yaw.RelativeTo = Enum.ActuatorRelativeTo.World
+	yaw.Torque = Vector3.zero
+	yaw.Parent = chassis
+	self.yawTorque = yaw
+
 	self.steer = 0
 	self.rayParams = RaycastParams.new()
 	self.rayParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -610,7 +620,7 @@ function Car:step(dt: number, throttle: number, steerInput: number, handbrake: b
 		local vLong, vLat = cv:Dot(wf), cv:Dot(wr)
 
 		local rear = not w.front
-		local grip = ((handbrake and rear) and cc.HandbrakeGrip or cc.Grip) * self.gripScale
+		local grip = ((handbrake and rear) and cc.HandbrakeGrip or cc.Grip) * self.gripScale * (rear and (cc.RearGrip or 1) or 1)
 		local limit = grip * spring
 
 		-- gravity pulling this corner along the ground; friction has to hold
@@ -651,6 +661,27 @@ function Car:step(dt: number, throttle: number, steerInput: number, handbrake: b
 		w.spin = (w.spin + vLong / R * dt) % (2 * math.pi)
 	end
 	self.grounded = grounded
+
+	-- stability assist (off with the handbrake, so drifts still work)
+	local assist = cc.StabilityAssist or 0
+	if assist > 0 and grounded >= 2 and not handbrake and abs(speed) > 6 then
+		local size = chassis.Size
+		local inertia = mass * (size.X * size.X + size.Z * size.Z) / 12
+		local wheelbase = 2 * (cc.HalfBase or HALF_BASE)
+		-- steering right (+) turns clockwise seen from above: negative yaw
+		local wanted = -speed * math.tan(self.steer) / wheelbase
+		local actual = chassis.AssemblyAngularVelocity:Dot(up)
+		-- only against too much rotation (a spin, or turning the wrong way);
+		-- never adds turn, so it cannot make the car oversteer
+		if actual * wanted < 0 or abs(actual) > abs(wanted) then
+			local tq = clamp(-(actual - wanted) * inertia * assist, -mass * 400, mass * 400)
+			self.yawTorque.Torque = up * tq
+		elseif self.yawTorque.Torque ~= Vector3.zero then
+			self.yawTorque.Torque = Vector3.zero
+		end
+	elseif self.yawTorque.Torque ~= Vector3.zero then
+		self.yawTorque.Torque = Vector3.zero
+	end
 
 	-- air drag, a gentle cap on top speed
 	local vmag = vel.Magnitude
