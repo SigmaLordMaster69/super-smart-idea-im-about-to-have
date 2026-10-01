@@ -111,6 +111,10 @@ function CameraController:update(dt: number, car)
 	-- per vehicle: chase distance and height, hood camera offset
 	local view = car.spec and car.spec.camera or {}
 	local mode = self:mode()
+	-- first person on a bike: hide the rider's head and upper body (only on
+	-- this screen) so the camera at the rider's eyes isn't inside them
+	self:_hideRider(car, bike and mode == "Hood")
+
 	if mode == "Hood" then
 		-- on the bike: the rider's eyes (above the seat), leaning with the bike
 		local hood = view.hood or (bike and Vector3.new(0, 3.1, 0.2) or Vector3.new(0, 2.7, -2.2))
@@ -164,6 +168,38 @@ function CameraController:update(dt: number, car)
 	end
 	cam.CFrame = CFrame.lookAt(camPos, focus + heading * 6)
 	cam.FieldOfView = 70 + clamp(speed / 150, 0, 1) * 10
+end
+
+-- parts of the rider that would block a first-person view
+local function isHeadPart(part: BasePart): boolean
+	local n = part.Name
+	return n == "Head" or n == "UpperTorso" or n == "Torso" or n == "RiderHelmet" or n == "RiderVisor" or n == "RiderTorso"
+		or part:FindFirstAncestorOfClass("Accessory") ~= nil
+end
+
+function CameraController:_hideRider(car, hidden: boolean)
+	if self.riderCar == car and self.riderHidden == hidden then
+		return
+	end
+	-- restore the previous vehicle's rider first
+	if self.riderParts then
+		for _, p in self.riderParts do
+			p.LocalTransparencyModifier = 0
+		end
+	end
+	self.riderCar, self.riderHidden, self.riderParts = car, hidden, nil
+	if not hidden or not car.bikeParts then
+		return
+	end
+	local list = {}
+	for _, d in car.bikeParts:GetDescendants() do
+		local part = d:IsA("Decal") and d.Parent or d -- the face on the head
+		if (d:IsA("BasePart") or d:IsA("Decal")) and part:IsA("BasePart") and isHeadPart(part) then
+			d.LocalTransparencyModifier = 1
+			table.insert(list, d)
+		end
+	end
+	self.riderParts = list
 end
 
 function CameraController:_pickSpot(sCar: number)

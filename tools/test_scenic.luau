@@ -627,6 +627,54 @@ for _ = 1, 30 do
 end
 check(sw.rainSound.Volume > 0.3, "rain loop audible in a storm")
 
+---------------------------------------------------------------------------
+-- 10. rain and snow surround the camera (so driving fast doesn't outrun
+-- them), and first person on a bike hides the rider's head
+---------------------------------------------------------------------------
+local fastCam = CFrame.lookAt(Vector3.new(500, 80, 0), Vector3.new(600, 80, 0))
+weather:set("Storm", true)
+weather:step(1 / 30, fastCam, Vector3.new(150, 0, 0), 12, nil, 1)
+local box = weather.skyPart
+local bottom = box.CFrame.Position.Y - box.Size.Y / 2
+local top = box.CFrame.Position.Y + box.Size.Y / 2
+check(bottom < 80 and top > 120, "rain spawns from below eye level to well above")
+local ahead = box.CFrame.Position.X - 500
+check(ahead > 0 and ahead - box.Size.X / 2 < 0, "rain box reaches from behind the camera to far ahead at speed")
+check(weather.rainEmitter.ShapeStyle == Enum.ParticleEmitterShapeStyle.Volume, "rain spawns throughout the box")
+check(weather.snowEmitter.Parent == weather.snowPart and weather.snowPart.CFrame.Position.Y - weather.snowPart.Size.Y / 2 < 80, "snow has its own low box")
+
+local CameraController = env.require("src/client/CameraController")
+local fpBike = Car.new(Config, Color3.new(1, 0, 0), nil, "Sportbike")
+local camState = {}
+-- (Lune has no default for LocalTransparencyModifier until it is set)
+local function ltm(d)
+	local ok, v = pcall(function()
+		return d.LocalTransparencyModifier
+	end)
+	return ok and v or 0
+end
+CameraController._hideRider(camState, fpBike, true)
+local hiddenNames, shownArms = {}, false
+for _, d in fpBike.bikeParts:GetDescendants() do
+	if d:IsA("BasePart") and d:GetAttribute("IR_Rider") then
+		if ltm(d) == 1 then
+			hiddenNames[d.Name] = true
+		elseif d.Name == "RiderForearm" then
+			shownArms = true
+		end
+	end
+end
+check(hiddenNames.RiderHelmet and hiddenNames.RiderVisor and hiddenNames.RiderTorso, "first person hides the rider's helmet and torso")
+check(shownArms, "first person keeps the rider's arms")
+CameraController._hideRider(camState, fpBike, false)
+local still = 0
+for _, d in fpBike.bikeParts:GetDescendants() do
+	if d:IsA("BasePart") and ltm(d) ~= 0 then
+		still += 1
+	end
+end
+check(still == 0, "leaving first person shows the rider again")
+
 if failures == 0 then
 	print("ALL SCENIC CHECKS PASSED")
 else

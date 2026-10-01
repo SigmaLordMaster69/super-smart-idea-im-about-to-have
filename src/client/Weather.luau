@@ -41,6 +41,11 @@ Weather.Presets = PRESETS
 
 local APPLY_INTERVAL = 0.1
 
+-- precipitation spawn boxes (see Weather.new)
+local RAIN_BOX = Vector3.new(150, 64, 150)
+local SNOW_BOX = Vector3.new(130, 50, 130)
+local DRIFT_BOX = Vector3.new(100, 26, 100)
+
 local FIELDS = { "cover", "cdens", "atmo", "haze", "glare", "rays", "bright", "exposure", "sat", "contrast", "rain", "snow", "storm" }
 
 local function ensure(className: string, parent: Instance, name: string)
@@ -126,9 +131,14 @@ function Weather.new(config, deps)
 	folder.Parent = self.parent
 	self.folder = folder
 
-	-- rain and snow come from a wide plate above the camera
-	local sky = emitterPart("Precipitation", Vector3.new(180, 1, 180), folder)
+	-- Rain and snow spawn throughout a big box around and ahead of the
+	-- camera, from just below eye level up, not from a sheet overhead: the
+	-- drops stay where they are in the world, so driving fast you pass
+	-- through them instead of outrunning rain that is still falling.
+	local sky = emitterPart("Precipitation", RAIN_BOX, folder)
 	self.skyPart = sky
+	local snowBox = emitterPart("Snowfall", SNOW_BOX, folder)
+	self.snowPart = snowBox
 	local rain = Instance.new("ParticleEmitter")
 	rain.Name = "Rain"
 	rain.Texture = textures.Rain
@@ -143,6 +153,8 @@ function Weather.new(config, deps)
 	rain.Speed = NumberRange.new(110, 135)
 	rain.SpreadAngle = Vector2.new(4, 4)
 	rain.Lifetime = NumberRange.new(0.55, 0.75)
+	rain.Shape = Enum.ParticleEmitterShape.Box
+	rain.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
 	rain.Rate = 0
 	rain.Parent = sky
 	self.rainEmitter = rain
@@ -163,12 +175,14 @@ function Weather.new(config, deps)
 	snow.Rotation = NumberRange.new(0, 360)
 	snow.RotSpeed = NumberRange.new(-60, 60)
 	snow.Lifetime = NumberRange.new(4.5, 6)
+	snow.Shape = Enum.ParticleEmitterShape.Box
+	snow.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
 	snow.Rate = 0
-	snow.Parent = sky
+	snow.Parent = snowBox
 	self.snowEmitter = snow
 
 	-- leaves / petals drift down closer to the camera
-	local drift = emitterPart("Drift", Vector3.new(110, 1, 110), folder)
+	local drift = emitterPart("Drift", DRIFT_BOX, folder)
 	self.driftPart = drift
 	local leaves = Instance.new("ParticleEmitter")
 	leaves.Name = "Leaves"
@@ -190,6 +204,8 @@ function Weather.new(config, deps)
 	leaves.Rotation = NumberRange.new(0, 360)
 	leaves.RotSpeed = NumberRange.new(-120, 120)
 	leaves.Lifetime = NumberRange.new(5, 7)
+	leaves.Shape = Enum.ParticleEmitterShape.Box
+	leaves.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
 	leaves.Rate = 0
 	leaves.Parent = drift
 	self.leafEmitter = leaves
@@ -388,10 +404,13 @@ function Weather:_effects(dt: number, camCF: CFrame, velocity: Vector3, ambient:
 		self.coverCheck = 0.25
 		self.covered = self.raycast(pos, Vector3.new(0, 70, 0)) ~= nil
 	end
+	-- boxes sit a little ahead (and further ahead at speed, since what is
+	-- behind is soon out of view); their bottoms are just below eye level
 	local look = Vector3.new(camCF.LookVector.X, 0, camCF.LookVector.Z)
-	local lead = velocity * 0.6
-	self.skyPart.CFrame = CFrame.new(pos + look * 30 + lead + Vector3.new(0, 42, 0))
-	self.driftPart.CFrame = CFrame.new(pos + look * 20 + lead * 0.5 + Vector3.new(0, 16, 0))
+	local flat = Vector3.new(velocity.X, 0, velocity.Z)
+	self.skyPart.CFrame = CFrame.new(pos + look * 20 + flat * 0.25 + Vector3.new(0, RAIN_BOX.Y / 2 - 10, 0))
+	self.snowPart.CFrame = CFrame.new(pos + look * 15 + flat * 0.3 + Vector3.new(0, SNOW_BOX.Y / 2 - 12, 0))
+	self.driftPart.CFrame = CFrame.new(pos + look * 15 + flat * 0.3 + Vector3.new(0, DRIFT_BOX.Y / 2 - 8, 0))
 	local open = self.covered and 0 or 1
 	self.rainEmitter.Rate = cur.rain * 950 * quality * open
 	self.snowEmitter.Rate = cur.snow * 480 * quality * open
